@@ -5,6 +5,10 @@ import { ThemeId, THEMES, applyTheme } from "./themes";
 
 const VALID_THEMES = Object.keys(THEMES) as ThemeId[];
 
+function isTauriRuntime(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
 function isValidTheme(value: unknown): value is ThemeId {
   return typeof value === "string" && VALID_THEMES.includes(value as ThemeId);
 }
@@ -42,6 +46,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // 別ウィンドウからのテーマ変更を受信
   useEffect(() => {
+    if (!isTauriRuntime()) return;
     const unlisten = listen<string>("theme-changed", ({ payload }) => {
       if (isValidTheme(payload)) {
         setThemeState(payload);
@@ -54,6 +59,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const setTheme = async (id: ThemeId) => {
     setThemeState(id);
     applyTheme(id);
+    if (!isTauriRuntime()) return;
     try {
       const store = await Store.load("config.json");
       await store.set("uiTheme", id);

@@ -1,50 +1,157 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Store } from "@tauri-apps/plugin-store";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Store } from "@tauri-apps/plugin-store";
 import { useTheme } from "../lib/ThemeContext";
 import { ThemeId } from "../lib/themes";
 
 type FloatingStatus = "idle" | "recording" | "transcribing" | "formatting" | "done" | "error";
 type ViewMode = "circle" | "waveform";
 
-const COLOR_PRESETS: Record<string, [string, string]> = {
-    ocean: ["#00f0ff", "#a855f7"],
-    sunset: ["#ff6b35", "#ff00aa"],
-    forest: ["#00ff88", "#00f0ff"],
-    lavender: ["#a855f7", "#ff00aa"],
-    neon: ["#00f0ff", "#ff00aa"],
+type Palette = {
+    bg0: string;
+    bg1: string;
+    panel: string;
+    grid: string;
+    line: string;
+    line2: string;
+    bars: string;
+    accent: string;
+    danger: string;
+    text: string;
+    dim: string;
 };
 
-// テーマごとのwaveform用カラー
-const WAVEFORM_COLORS: Record<ThemeId, { bg: string; bar: string; barActive: string; dot: string }> = {
-    cyberpunk: { bg: "#0d0d1a", bar: "#00f0ff", barActive: "#a855f7", dot: "#ff3366" },
-    simple: { bg: "#e8ecf0", bar: "#2563eb", barActive: "#3b82f6", dot: "#dc2626" },
-    pop: { bg: "#fce7f3", bar: "#ec4899", barActive: "#f472b6", dot: "#f43f5e" },
-    natural: { bg: "#4a8c7e", bar: "#ffffff", barActive: "#e8ddd0", dot: "#c67a4a" },
-    midnight: { bg: "#1e1e30", bar: "#d4a853", barActive: "#e8c06a", dot: "#ef4444" },
-    retro: { bg: "#0a1a0a", bar: "#33ff33", barActive: "#ff8c00", dot: "#ff3333" },
+const COLOR_PRESETS: Record<string, [string, string]> = {
+    ocean: ["#00d5ff", "#7c3aed"],
+    sunset: ["#ff7a3d", "#ff2d9d"],
+    forest: ["#22c55e", "#14b8a6"],
+    lavender: ["#a855f7", "#f472b6"],
+    neon: ["#00f5d4", "#fb37ff"],
 };
+
+const PALETTES: Record<ThemeId, Palette> = {
+    cyberpunk: {
+        bg0: "#070711",
+        bg1: "#11142a",
+        panel: "rgba(10, 12, 28, 0.86)",
+        grid: "rgba(0, 213, 255, 0.14)",
+        line: "#00d5ff",
+        line2: "#fb37ff",
+        bars: "#8b5cf6",
+        accent: "#22ffb6",
+        danger: "#ff3366",
+        text: "#eef6ff",
+        dim: "rgba(238, 246, 255, 0.58)",
+    },
+    simple: {
+        bg0: "#eef4ff",
+        bg1: "#dceafe",
+        panel: "rgba(255, 255, 255, 0.78)",
+        grid: "rgba(37, 99, 235, 0.12)",
+        line: "#2563eb",
+        line2: "#06b6d4",
+        bars: "#3b82f6",
+        accent: "#10b981",
+        danger: "#dc2626",
+        text: "#172033",
+        dim: "rgba(23, 32, 51, 0.54)",
+    },
+    pop: {
+        bg0: "#fff1f8",
+        bg1: "#f1e7ff",
+        panel: "rgba(255, 255, 255, 0.74)",
+        grid: "rgba(236, 72, 153, 0.13)",
+        line: "#ec4899",
+        line2: "#8b5cf6",
+        bars: "#f472b6",
+        accent: "#06b6d4",
+        danger: "#f43f5e",
+        text: "#42163e",
+        dim: "rgba(66, 22, 62, 0.55)",
+    },
+    natural: {
+        bg0: "#f7f2e8",
+        bg1: "#dce8d7",
+        panel: "rgba(255, 252, 245, 0.76)",
+        grid: "rgba(67, 112, 91, 0.13)",
+        line: "#43705b",
+        line2: "#c67a4a",
+        bars: "#729b73",
+        accent: "#2f9e8f",
+        danger: "#c05746",
+        text: "#312a22",
+        dim: "rgba(49, 42, 34, 0.54)",
+    },
+    midnight: {
+        bg0: "#11111f",
+        bg1: "#24233a",
+        panel: "rgba(19, 19, 32, 0.83)",
+        grid: "rgba(212, 168, 83, 0.12)",
+        line: "#e8c06a",
+        line2: "#7dd3fc",
+        bars: "#d4a853",
+        accent: "#f97316",
+        danger: "#ef4444",
+        text: "#f4efe7",
+        dim: "rgba(244, 239, 231, 0.56)",
+    },
+    retro: {
+        bg0: "#061006",
+        bg1: "#102410",
+        panel: "rgba(5, 16, 5, 0.88)",
+        grid: "rgba(51, 255, 51, 0.13)",
+        line: "#33ff33",
+        line2: "#ffb000",
+        bars: "#66ff66",
+        accent: "#ff8c00",
+        danger: "#ff3333",
+        text: "#ccffcc",
+        dim: "rgba(204, 255, 204, 0.5)",
+    },
+};
+
+const VIEW_SIZE: Record<ViewMode, { width: number; height: number }> = {
+    circle: { width: 104, height: 104 },
+    waveform: { width: 360, height: 112 },
+};
+
+const MENU_SIZE = { width: 300, height: 260 };
+
+const STATUS_LABEL: Record<FloatingStatus, string> = {
+    idle: "READY",
+    recording: "LIVE",
+    transcribing: "TEXT",
+    formatting: "MAKE",
+    done: "DONE",
+    error: "ERR",
+};
+
+function isTauriRuntime(): boolean {
+    return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
 
 export default function FloatingWindow() {
-    const { theme } = useTheme();
+    const { theme, setTheme } = useTheme();
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
     const [status, setStatus] = useState<FloatingStatus>("idle");
     const [errorMsg, setErrorMsg] = useState("");
     const [colors, setColors] = useState<[string, string]>(COLOR_PRESETS.ocean);
-    const [viewMode, setViewMode] = useState<ViewMode>("circle");
+    const [viewMode, setViewMode] = useState<ViewMode>("waveform");
+    const [menuOpen, setMenuOpen] = useState(false);
     const [winW, setWinW] = useState(() => window.innerWidth);
     const [winH, setWinH] = useState(() => window.innerHeight);
-    const audioLevelRef = useRef(0);
-    const barsRef = useRef<number[]>(new Array(64).fill(0));
-    const animIdRef = useRef(0);
-    const timeRef = useRef(0);
-    const smoothLevelRef = useRef(0);
 
-    // ウィンドウリサイズを検知
+    const audioLevelRef = useRef(0);
+    const smoothLevelRef = useRef(0);
+    const timeRef = useRef(0);
+    const animIdRef = useRef(0);
+    const barsRef = useRef<number[]>(new Array(96).fill(0));
+    const waveRef = useRef<number[]>(new Array(96).fill(0));
+    const peakRef = useRef(0);
+
     useEffect(() => {
         const onResize = () => {
             setWinW(window.innerWidth);
@@ -54,767 +161,692 @@ export default function FloatingWindow() {
         return () => window.removeEventListener("resize", onResize);
     }, []);
 
-    // ビューモード変更時にウィンドウサイズを切り替え
-    useEffect(() => {
-        (async () => {
-            try {
-                const win = getCurrentWindow();
-                if (viewMode === "waveform") {
-                    await win.setSize(new LogicalSize(280, 60));
-                } else {
-                    await win.setSize(new LogicalSize(80, 80));
-                }
-            } catch (e) {
-                console.error("resize failed:", e);
-            }
-        })();
-    }, [viewMode]);
+    const resizeWindow = useCallback(async (open: boolean, mode: ViewMode) => {
+        if (!isTauriRuntime()) return;
+        const size = open ? MENU_SIZE : VIEW_SIZE[mode];
+        try {
+            await getCurrentWindow().setSize(new LogicalSize(size.width, size.height));
+        } catch (e) {
+            console.error("floating resize failed:", e);
+        }
+    }, []);
 
-    // ビューモードをStoreに保存/読み込み
+    useEffect(() => {
+        resizeWindow(menuOpen, viewMode);
+    }, [menuOpen, resizeWindow, viewMode]);
+
     useEffect(() => {
         (async () => {
             try {
                 const store = await Store.load("config.json");
                 const preset = await store.get<string>("accentColor");
                 if (preset && COLOR_PRESETS[preset]) setColors(COLOR_PRESETS[preset]);
+
                 const savedMode = await store.get<ViewMode>("floatingViewMode");
-                if (savedMode === "circle" || savedMode === "waveform") setViewMode(savedMode);
-            } catch { }
+                if (savedMode === "circle" || savedMode === "waveform") {
+                    setViewMode(savedMode);
+                }
+            } catch {
+                // Defaults are fine when config is unavailable.
+            }
         })();
     }, []);
 
     const saveViewMode = useCallback(async (mode: ViewMode) => {
+        setViewMode(mode);
         try {
             const store = await Store.load("config.json");
             await store.set("floatingViewMode", mode);
             await store.save();
-        } catch { }
+        } catch {
+            // Visual preference persistence is non-critical.
+        }
     }, []);
 
-    // Listen for color changes
     useEffect(() => {
+        if (!isTauriRuntime()) return;
         const unlisten = listen<string>("accent-color-changed", ({ payload }) => {
             if (COLOR_PRESETS[payload]) setColors(COLOR_PRESETS[payload]);
         });
-        return () => { unlisten.then(fn => fn()); };
+        return () => {
+            unlisten.then((fn) => fn());
+        };
     }, []);
 
-    // Listen for audio level
     useEffect(() => {
+        if (!isTauriRuntime()) return;
         const unlisten = listen<number>("audio-level", ({ payload }) => {
-            audioLevelRef.current = payload;
+            audioLevelRef.current = Math.max(0, Math.min(payload, 1));
         });
-        return () => { unlisten.then(fn => fn()); };
+        return () => {
+            unlisten.then((fn) => fn());
+        };
     }, []);
 
-    // Listen for status events
     useEffect(() => {
+        if (!isTauriRuntime()) return;
         const unlisteners = Promise.all([
             listen("recording-started", () => setStatus("recording")),
             listen("recording-stopped", () => setStatus("transcribing")),
             listen("transcribing", () => setStatus("transcribing")),
+            listen("formatting", () => setStatus("formatting")),
             listen("transcription-complete", () => {
                 setStatus("done");
-                setTimeout(() => setStatus("idle"), 2000);
+                window.setTimeout(() => setStatus("idle"), 1800);
             }),
             listen<string>("transcription-error", ({ payload }) => {
                 setErrorMsg(payload);
                 setStatus("error");
-                setTimeout(() => { setStatus("idle"); setErrorMsg(""); }, 8000);
+                window.setTimeout(() => {
+                    setStatus("idle");
+                    setErrorMsg("");
+                }, 8000);
             }),
         ]);
-        return () => { unlisteners.then(fns => fns.forEach(fn => fn())); };
+        return () => {
+            unlisteners.then((fns) => fns.forEach((fn) => fn()));
+        };
     }, []);
 
-    // ---------------------------------------------------------------------------
-    // Canvas animation loop
-    // ---------------------------------------------------------------------------
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (!canvas || menuOpen) return;
 
-        const ctx = canvas.getContext("2d")!;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
         const dpr = window.devicePixelRatio || 1;
-        const cW = winW;
-        const cH = winH;
-        canvas.width = cW * dpr;
-        canvas.height = cH * dpr;
-        ctx.scale(dpr, dpr);
+        canvas.width = Math.round(winW * dpr);
+        canvas.height = Math.round(winH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-        const S = Math.min(cW, cH);
-        const CX = cW / 2;
-        const CY = cH / 2;
-        const barCount = Math.max(12, Math.round(S / 3.5));
-        const innerR = S * 0.175;
-        const maxBarH = S * 0.225;
+        const palette = withAccent(PALETTES[theme] ?? PALETTES.cyberpunk, colors);
 
-        const updateBars = (isRecording: boolean, isError: boolean, level: number, _t: number, count: number, maxH: number) => {
-            const bars = barsRef.current;
-            while (bars.length < count) bars.push(0);
-            for (let i = 0; i < count; i++) {
-                const target = isRecording
-                    ? level * (0.3 + 0.7 * Math.random()) * maxH
-                    : isError
-                        ? Math.random() * (maxH * 0.08) + 1
-                        : 1.0; // idle時は完全に静止
-                bars[i] += (target - bars[i]) * 0.22;
-            }
-        };
-
-        const drawRadialBars = (colorFn: (i: number, barH: number) => string, lineW: number) => {
-            const bars = barsRef.current;
-            for (let i = 0; i < barCount; i++) {
-                const angle = (i / barCount) * Math.PI * 2 - Math.PI / 2;
-                const barH = Math.max(bars[i], 1.2);
-                const offset = innerR + S * 0.04;
-                const x1 = CX + Math.cos(angle) * offset;
-                const y1 = CY + Math.sin(angle) * offset;
-                const x2 = CX + Math.cos(angle) * (offset + barH);
-                const y2 = CY + Math.sin(angle) * (offset + barH);
-                ctx.beginPath();
-                ctx.moveTo(x1, y1);
-                ctx.lineTo(x2, y2);
-                ctx.strokeStyle = colorFn(i, barH);
-                ctx.lineWidth = lineW;
-                ctx.lineCap = "round";
-                ctx.stroke();
-            }
-        };
-
-        const getState = () => {
+        const frame = () => {
             timeRef.current += 1;
-            ctx.clearRect(0, 0, cW, cH);
-            const isRecording = status === "recording";
-            const isError = status === "error";
-            // RMSを大幅に増幅し、パワーカーブで小さな音でもしっかり反応させる
-            const amplified = Math.min(audioLevelRef.current * 25, 1);
-            const rawLevel = isRecording ? Math.pow(amplified, 0.6) : 0;
-            smoothLevelRef.current += (rawLevel - smoothLevelRef.current) * 0.35;
-            return { isRecording, isError, level: smoothLevelRef.current, t: timeRef.current };
-        };
+            const amplified = Math.min(audioLevelRef.current * 28, 1);
+            const targetLevel = status === "recording" ? Math.pow(amplified, 0.55) : 0;
+            smoothLevelRef.current += (targetLevel - smoothLevelRef.current) * 0.28;
+            peakRef.current = Math.max(smoothLevelRef.current, peakRef.current * 0.965);
 
-        // ===================================================================
-        // Waveform — 横長波形ビジュアル（全テーマ共通、テーマ色で描画）
-        // ===================================================================
-        const drawWaveform = () => {
-            const { isRecording, isError, level, t } = getState();
-            const wc = WAVEFORM_COLORS[theme] || WAVEFORM_COLORS.natural;
-
-            // 背景
-            ctx.fillStyle = isError ? "#3a1f1f" : wc.bg;
-            ctx.fillRect(0, 0, cW, cH);
-
-            // 波形バー
-            const waveBarCount = Math.max(20, Math.round(cW / 5));
-            updateBars(isRecording, isError, level, t, waveBarCount, cH * 0.7);
-            const bars = barsRef.current;
-            const maxH = cH * 0.7;
-            const gap = 2;
-            const barW = Math.max(2, (cW - gap * (waveBarCount + 1)) / waveBarCount);
-            const totalW = waveBarCount * barW + (waveBarCount - 1) * gap;
-            const startX = (cW - totalW) / 2;
-
-            for (let i = 0; i < waveBarCount; i++) {
-                const centerFactor = 1 - Math.abs(i - waveBarCount / 2) / (waveBarCount / 2);
-                const target = isRecording
-                    ? level * (0.2 + 0.8 * Math.random()) * maxH * (0.3 + 0.7 * centerFactor)
-                    : isError
-                        ? Math.random() * maxH * 0.15 + 4
-                        : 3; // idle時は小さな固定バーのみ
-                bars[i] += (target - bars[i]) * 0.2;
-
-                const barH = Math.max(bars[i], 3);
-                const x = startX + i * (barW + gap);
-                const y = (cH - barH) / 2;
-
-                ctx.beginPath();
-                ctx.roundRect(x, y, barW, barH, barW / 2);
-                const alpha = isRecording
-                    ? 0.7 + (barH / maxH) * 0.3
-                    : isError ? 0.5 : 0.6 + Math.sin(t * 0.02 + i * 0.3) * 0.15;
-                ctx.fillStyle = hexToRgba(
-                    isError ? "#ff8888" : (barH / maxH > 0.5 ? wc.barActive : wc.bar),
-                    alpha
-                );
-                ctx.fill();
-            }
-
-            // 右下ドット
-            const dotR = Math.max(3, cH * 0.08);
-            ctx.beginPath();
-            ctx.arc(cW - dotR * 2, cH - dotR * 2, dotR, 0, Math.PI * 2);
-            if (isRecording) {
-                const pulse = Math.sin(t * 0.1) * 0.2 + 0.8;
-                ctx.fillStyle = hexToRgba(wc.dot, pulse);
+            if (viewMode === "waveform") {
+                drawWaveform(ctx, winW, winH, palette, status, smoothLevelRef.current, peakRef.current, timeRef.current, barsRef.current, waveRef.current);
             } else {
-                ctx.fillStyle = hexToRgba(isError ? wc.dot : wc.bar, 0.5);
+                drawOrb(ctx, winW, winH, palette, status, smoothLevelRef.current, peakRef.current, timeRef.current, barsRef.current);
             }
-            ctx.fill();
 
-            animIdRef.current = requestAnimationFrame(drawWaveform);
+            animIdRef.current = window.requestAnimationFrame(frame);
         };
 
-        // ===================================================================
-        // Circle themes (existing)
-        // ===================================================================
-        const drawCyberpunk = () => {
-            const { isRecording, isError, level, t } = getState();
-            updateBars(isRecording, isError, level, t, barCount, maxBarH);
-            const c0 = isError ? "#ff3366" : colors[0];
-            const c1 = isError ? "#ff0044" : colors[1];
+        frame();
+        return () => window.cancelAnimationFrame(animIdRef.current);
+    }, [colors, menuOpen, status, theme, viewMode, winH, winW]);
 
-            ctx.save();
-            ctx.beginPath();
-            const hexR = S / 2 - 2;
-            for (let i = 0; i < 6; i++) {
-                const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
-                if (i === 0) ctx.moveTo(CX + Math.cos(a) * hexR, CY + Math.sin(a) * hexR);
-                else ctx.lineTo(CX + Math.cos(a) * hexR, CY + Math.sin(a) * hexR);
-            }
-            ctx.closePath();
-            const bg = ctx.createRadialGradient(CX, CY, 0, CX, CY, S / 2);
-            bg.addColorStop(0, isRecording ? hexToRgba(c0, 0.15) : "rgba(10,10,25,0.88)");
-            bg.addColorStop(1, "rgba(0,0,0,0.95)");
-            ctx.fillStyle = bg;
-            ctx.fill();
-            const glowA = isRecording ? 0.5 + level * 0.4 : 0.15 + Math.sin(t * 0.02) * 0.1;
-            ctx.strokeStyle = hexToRgba(c0, glowA);
-            ctx.lineWidth = isRecording ? 1.5 + level : 1;
-            ctx.shadowColor = c0;
-            ctx.shadowBlur = isRecording ? 8 + level * 12 : 3;
-            ctx.stroke();
-            ctx.restore();
-
-            ctx.save();
-            ctx.translate(CX, CY);
-            ctx.rotate(t * (isRecording ? 0.03 : 0.005));
-            ctx.beginPath();
-            ctx.arc(0, 0, innerR + 1, 0, Math.PI * 2);
-            ctx.strokeStyle = hexToRgba(c1, 0.2);
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-            ctx.restore();
-
-            if (isRecording) {
-                const pulse = Math.sin(t * 0.08) * 0.15 + 0.3;
-                ctx.beginPath();
-                ctx.arc(CX, CY, innerR - 3, 0, Math.PI * 2);
-                ctx.fillStyle = hexToRgba(c0, pulse * level);
-                ctx.shadowColor = c0;
-                ctx.shadowBlur = 15;
-                ctx.fill();
-                ctx.shadowBlur = 0;
-            }
-
-            drawRadialBars((i, barH) => {
-                const alpha = isRecording ? 0.5 + (barH / maxBarH) * 0.5 : 0.12;
-                return hexToRgba(i % 2 === 0 ? c0 : c1, alpha);
-            }, Math.max(1.5, S * 0.02));
-
-            if (isRecording) {
-                const dotA = Math.sin(t * 0.1) * 0.3 + 0.7;
-                ctx.save();
-                ctx.translate(CX, CY);
-                ctx.beginPath();
-                const r = S * 0.05;
-                for (let i = 0; i < 6; i++) {
-                    const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
-                    if (i === 0) ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-                    else ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-                }
-                ctx.closePath();
-                ctx.fillStyle = `rgba(255,51,102,${dotA})`;
-                ctx.shadowColor = "#ff3366";
-                ctx.shadowBlur = 10;
-                ctx.fill();
-                ctx.restore();
-            } else {
-                ctx.fillStyle = isError ? "#ff3366" : hexToRgba(c0, 0.8);
-                ctx.font = `bold ${Math.round(S * 0.15)}px 'Orbitron','Segoe UI',sans-serif`;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText(isError ? "✗" : "◈", CX, CY);
-            }
-            animIdRef.current = requestAnimationFrame(drawCyberpunk);
-        };
-
-        const drawSimple = () => {
-            const { isRecording, isError, level, t } = getState();
-            updateBars(isRecording, isError, level, t, barCount, maxBarH);
-            const primary = isError ? "#dc2626" : "#2563eb";
-            const circleR = S / 2 - 4;
-            ctx.beginPath();
-            ctx.arc(CX, CY, circleR, 0, Math.PI * 2);
-            const bg = ctx.createRadialGradient(CX, CY, 0, CX, CY, circleR);
-            bg.addColorStop(0, "rgba(255,255,255,0.95)");
-            bg.addColorStop(1, "rgba(240,242,245,0.9)");
-            ctx.fillStyle = bg;
-            ctx.fill();
-            ctx.strokeStyle = hexToRgba(primary, isRecording ? 0.5 + level * 0.4 : 0.15);
-            ctx.lineWidth = isRecording ? 2 : 1;
-            ctx.stroke();
-            drawRadialBars((_i, barH) => hexToRgba(primary, isRecording ? 0.4 + (barH / maxBarH) * 0.5 : 0.08), Math.max(1, S * 0.018));
-            if (isRecording) {
-                const dotA = Math.sin(t * 0.08) * 0.2 + 0.8;
-                ctx.beginPath();
-                ctx.arc(CX, CY, S * 0.06, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(220,38,38,${dotA})`;
-                ctx.fill();
-            } else {
-                ctx.fillStyle = isError ? "#dc2626" : hexToRgba(primary, 0.7);
-                ctx.font = `bold ${Math.round(S * 0.15)}px 'Inter','Segoe UI',sans-serif`;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText(isError ? "✗" : "●", CX, CY);
-            }
-            animIdRef.current = requestAnimationFrame(drawSimple);
-        };
-
-        const drawPop = () => {
-            const { isRecording, isError, level, t } = getState();
-            updateBars(isRecording, isError, level, t, barCount, maxBarH);
-            const primary = isError ? "#f43f5e" : "#ec4899";
-            const circleR = S / 2 - 3;
-            ctx.beginPath();
-            ctx.arc(CX, CY, circleR, 0, Math.PI * 2);
-            const bg = ctx.createRadialGradient(CX, CY, 0, CX, CY, circleR);
-            bg.addColorStop(0, "rgba(253,242,248,0.95)");
-            bg.addColorStop(1, "rgba(245,208,230,0.85)");
-            ctx.fillStyle = bg;
-            ctx.fill();
-            const borderScale = isRecording ? 1 + Math.sin(t * 0.08) * 0.01 * level : 1;
-            ctx.beginPath();
-            ctx.arc(CX, CY, circleR * borderScale, 0, Math.PI * 2);
-            ctx.strokeStyle = hexToRgba(primary, isRecording ? 0.6 + level * 0.3 : 0.25);
-            ctx.lineWidth = isRecording ? 2.5 : 1.5;
-            ctx.stroke();
-            drawRadialBars((i, barH) => {
-                const hue = (i / barCount) * 60 + 320;
-                const alpha = isRecording ? 0.5 + (barH / maxBarH) * 0.5 : 0.12;
-                return `hsla(${hue},80%,65%,${alpha})`;
-            }, Math.max(1.5, S * 0.022));
-            if (isRecording) {
-                const sc = 1 + Math.sin(t * 0.1) * 0.15;
-                ctx.save();
-                ctx.translate(CX, CY);
-                ctx.scale(sc, sc);
-                ctx.beginPath();
-                ctx.arc(0, 0, S * 0.06, 0, Math.PI * 2);
-                ctx.fillStyle = "rgba(244,63,94,0.85)";
-                ctx.fill();
-                ctx.restore();
-            } else {
-                ctx.fillStyle = isError ? "#f43f5e" : hexToRgba(primary, 0.75);
-                ctx.font = `bold ${Math.round(S * 0.15)}px 'Nunito','Segoe UI',sans-serif`;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText(isError ? "😢" : "♪", CX, CY);
-            }
-            animIdRef.current = requestAnimationFrame(drawPop);
-        };
-
-        const drawNatural = () => {
-            const { isRecording, isError, level, t } = getState();
-            updateBars(isRecording, isError, level, t, barCount, maxBarH);
-            const green = isError ? "#c05746" : "#5a7247";
-            const terra = isError ? "#a04030" : "#c67a4a";
-            const circleR = S / 2 - 3;
-            ctx.beginPath();
-            ctx.arc(CX, CY, circleR, 0, Math.PI * 2);
-            const bg = ctx.createRadialGradient(CX, CY, 0, CX, CY, circleR);
-            bg.addColorStop(0, "rgba(255,252,245,0.95)");
-            bg.addColorStop(1, "rgba(232,223,211,0.85)");
-            ctx.fillStyle = bg;
-            ctx.fill();
-            ctx.save();
-            ctx.beginPath();
-            const segs = 80;
-            for (let i = 0; i <= segs; i++) {
-                const a = (i / segs) * Math.PI * 2;
-                const wobble = isRecording
-                    ? Math.sin(t * 0.05 + i * 0.3) * 1.5 * level + Math.sin(i * 0.8) * 0.5
-                    : Math.sin(t * 0.01 + i * 0.5) * 0.5;
-                const r = circleR + wobble;
-                const x = CX + Math.cos(a) * r;
-                const y = CY + Math.sin(a) * r;
-                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            }
-            ctx.closePath();
-            ctx.strokeStyle = hexToRgba(green, isRecording ? 0.5 + level * 0.3 : 0.25);
-            ctx.lineWidth = isRecording ? 1.5 : 1;
-            ctx.stroke();
-            ctx.restore();
-            drawRadialBars((i, barH) => hexToRgba(i % 2 === 0 ? green : terra, isRecording ? 0.3 + (barH / maxBarH) * 0.5 : 0.08), Math.max(1, S * 0.018));
-            if (isRecording) {
-                const dotA = Math.sin(t * 0.06) * 0.2 + 0.7;
-                ctx.beginPath();
-                ctx.arc(CX, CY, S * 0.055, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(192,87,70,${dotA})`;
-                ctx.fill();
-            } else {
-                ctx.fillStyle = isError ? "#c05746" : hexToRgba(green, 0.7);
-                ctx.font = `500 ${Math.round(S * 0.14)}px 'Noto Serif JP',serif`;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText(isError ? "✗" : "❦", CX, CY);
-            }
-            animIdRef.current = requestAnimationFrame(drawNatural);
-        };
-
-        const drawMidnight = () => {
-            const { isRecording, isError, level, t } = getState();
-            updateBars(isRecording, isError, level, t, barCount, maxBarH);
-            const gold = isError ? "#ef4444" : "#d4a853";
-            const amber = isError ? "#dc2626" : "#e8c06a";
-            const circleR = S / 2 - 3;
-            ctx.beginPath();
-            ctx.arc(CX, CY, circleR, 0, Math.PI * 2);
-            const bg = ctx.createRadialGradient(CX, CY, 0, CX, CY, circleR);
-            bg.addColorStop(0, "rgba(30,30,50,0.92)");
-            bg.addColorStop(1, "rgba(20,20,35,0.98)");
-            ctx.fillStyle = bg;
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(CX, CY, circleR, 0, Math.PI * 2);
-            ctx.strokeStyle = hexToRgba(gold, isRecording ? 0.5 + level * 0.3 : 0.2);
-            ctx.lineWidth = isRecording ? 1.5 : 0.8;
-            ctx.stroke();
-            drawRadialBars((_i, barH) => hexToRgba(gold, isRecording ? 0.4 + (barH / maxBarH) * 0.5 : 0.06), Math.max(1, S * 0.015));
-            if (isRecording) {
-                for (let i = 0; i < 5; i++) {
-                    const a = (t * 0.01 + i * 1.25) % (Math.PI * 2);
-                    const dist = innerR + 5 + Math.sin(t * 0.03 + i * 2) * (S * 0.1);
-                    ctx.beginPath();
-                    ctx.arc(CX + Math.cos(a) * dist, CY + Math.sin(a) * dist, 1, 0, Math.PI * 2);
-                    ctx.fillStyle = hexToRgba(amber, 0.3 + Math.sin(t * 0.05 + i) * 0.2);
-                    ctx.fill();
-                }
-                const dotA = Math.sin(t * 0.08) * 0.2 + 0.7;
-                ctx.beginPath();
-                ctx.arc(CX, CY, S * 0.05, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(239,68,68,${dotA})`;
-                ctx.fill();
-            } else {
-                ctx.fillStyle = isError ? "#ef4444" : hexToRgba(gold, 0.75);
-                ctx.font = `500 ${Math.round(S * 0.14)}px 'Outfit','Segoe UI',sans-serif`;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText(isError ? "✗" : "✦", CX, CY);
-            }
-            animIdRef.current = requestAnimationFrame(drawMidnight);
-        };
-
-        const drawRetro = () => {
-            const { isRecording, isError, level, t } = getState();
-            updateBars(isRecording, isError, level, t, barCount, maxBarH);
-            const green = isError ? "#ff3333" : "#33ff33";
-            const orange = isError ? "#ff0000" : "#ff8c00";
-            ctx.fillStyle = "rgba(10,26,10,0.95)";
-            ctx.fillRect(0, 0, S, S);
-            ctx.strokeStyle = hexToRgba(green, isRecording ? 0.6 : 0.25);
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(0, 0, S, S);
-            const retroBarCount = Math.max(8, Math.round(S / 10));
-            for (let i = 0; i < retroBarCount; i++) {
-                const angle = (i / retroBarCount) * Math.PI * 2 - Math.PI / 2;
-                const barH = Math.max(barsRef.current[i * 2] || barsRef.current[i] || 0, 1.5);
-                const pixSize = Math.max(2, Math.round(S * 0.035));
-                const steps = Math.floor(barH / pixSize);
-                for (let s = 0; s < steps; s++) {
-                    const dist = innerR + 3 + s * pixSize;
-                    const px = CX + Math.cos(angle) * dist - pixSize / 2;
-                    const py = CY + Math.sin(angle) * dist - pixSize / 2;
-                    const bA = isRecording ? 0.5 + (s / Math.max(steps, 1)) * 0.4 : 0.12;
-                    ctx.fillStyle = s > steps * 0.7 ? hexToRgba(orange, bA) : hexToRgba(green, bA);
-                    ctx.fillRect(Math.round(px), Math.round(py), pixSize - 1, pixSize - 1);
-                }
-            }
-            for (let y = 0; y < S; y += 3) {
-                ctx.fillStyle = "rgba(0,0,0,0.06)";
-                ctx.fillRect(0, y, S, 1);
-            }
-            if (isRecording) {
-                const blink = Math.floor(t / 15) % 2 === 0;
-                if (blink) {
-                    const ps = Math.max(4, Math.round(S * 0.05));
-                    ctx.fillStyle = "#ff3333";
-                    ctx.fillRect(CX - ps / 2, CY - ps / 2, ps, ps);
-                }
-            } else {
-                ctx.fillStyle = isError ? "#ff3333" : green;
-                ctx.font = `bold ${Math.round(S * 0.12)}px 'Press Start 2P',monospace`;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                ctx.fillText(isError ? "X" : ">", CX, CY);
-            }
-            animIdRef.current = requestAnimationFrame(drawRetro);
-        };
-
-        // テーマ選択
-        if (viewMode === "waveform") {
-            drawWaveform();
-        } else {
-            const drawFns: Record<ThemeId, () => void> = {
-                cyberpunk: drawCyberpunk,
-                simple: drawSimple,
-                pop: drawPop,
-                natural: drawNatural,
-                midnight: drawMidnight,
-                retro: drawRetro,
-            };
-            (drawFns[theme] || drawCyberpunk)();
-        }
-        return () => cancelAnimationFrame(animIdRef.current);
-    }, [status, colors, theme, viewMode, winW, winH]);
-
-    // Click handler
     const handleClick = useCallback(async () => {
-        try { await invoke("toggle_recording_command"); } catch (e) { console.error("toggle failed:", e); }
+        if (!isTauriRuntime()) {
+            setStatus((current) => {
+                const next = current === "recording" ? "idle" : "recording";
+                audioLevelRef.current = next === "recording" ? 0.08 : 0;
+                return next;
+            });
+            return;
+        }
+        try {
+            await invoke("toggle_recording_command");
+        } catch (e) {
+            console.error("toggle recording failed:", e);
+        }
     }, []);
-
-    const preventFocus = useCallback((e: React.MouseEvent) => { e.preventDefault(); }, []);
 
     const handleClose = useCallback(async (e: React.MouseEvent<HTMLButtonElement>) => {
         e.stopPropagation();
-        try { await invoke("switch_to_main"); } catch (err) { console.error("Close failed:", err); }
+        if (!isTauriRuntime()) return;
+        try {
+            await invoke("switch_to_main");
+        } catch (err) {
+            console.error("close floating failed:", err);
+        }
     }, []);
 
-
-
-
-    // 設定メニュー
-    const [menuOpen, setMenuOpen] = useState(false);
-
-    const toggleMenu = useCallback(() => {
-        setMenuOpen(prev => !prev);
-    }, []);
-
-    // テーマ変更
-    const { setTheme } = useTheme();
     const handleThemeChange = useCallback(async (id: ThemeId) => {
         await setTheme(id);
+        if (!isTauriRuntime()) return;
         const { emit } = await import("@tauri-apps/api/event");
         await emit("theme-changed", id);
     }, [setTheme]);
 
-    // メニュー開閉時にウィンドウサイズを調整
-    useEffect(() => {
-        (async () => {
-            try {
-                const win = getCurrentWindow();
-                if (menuOpen) {
-                    await win.setSize(new LogicalSize(220, 160));
-                } else if (viewMode === "waveform") {
-                    await win.setSize(new LogicalSize(280, 60));
-                } else {
-                    await win.setSize(new LogicalSize(80, 80));
-                }
-            } catch { }
-        })();
-    }, [menuOpen, viewMode]);
+    const preventFocus = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+    }, []);
 
+    const palette = PALETTES[theme] ?? PALETTES.cyberpunk;
     const isWaveform = viewMode === "waveform";
-    const btnSize = menuOpen ? 18 : Math.max(14, Math.round(Math.min(winW, winH) * 0.22));
-
-    const THEME_LIST: { id: ThemeId; label: string; color: string }[] = [
-        { id: "cyberpunk", label: "Cyber", color: "#00f0ff" },
-        { id: "simple", label: "Simple", color: "#2563eb" },
-        { id: "pop", label: "Pop", color: "#ec4899" },
-        { id: "natural", label: "Natural", color: "#5a7247" },
-        { id: "midnight", label: "Night", color: "#d4a853" },
-        { id: "retro", label: "Retro", color: "#33ff33" },
-    ];
-
-    const btnStyle: React.CSSProperties = {
-        borderRadius: 3,
-        background: "rgba(0,0,0,0.2)",
-        border: "1px solid rgba(255,255,255,0.15)",
-        color: "rgba(255,255,255,0.8)",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 0,
-        lineHeight: 1,
-    };
+    const controlSize = menuOpen ? 24 : isWaveform ? 24 : 22;
 
     return (
-        <div ref={containerRef} style={{
-            position: "relative",
-            width: "100vw",
-            height: "100vh",
-            overflow: "hidden",
-            borderRadius: (isWaveform && !menuOpen) ? 14 : 0,
-        }}>
-            {/* 右上: 歯車 + ✕ */}
-            <div style={{ position: "absolute", top: 2, right: 2, display: "flex", gap: 2, zIndex: 20 }}>
-                <button
-                    onClick={toggleMenu}
+        <div
+            style={{
+                position: "relative",
+                width: "100vw",
+                height: "100vh",
+                overflow: "hidden",
+                borderRadius: menuOpen ? 0 : isWaveform ? 22 : 52,
+                background: palette.bg0,
+                fontFamily: "'Inter', 'Segoe UI', sans-serif",
+            }}
+        >
+            <div data-tauri-drag-region style={{ position: "absolute", inset: 0, zIndex: 1 }} />
+
+            <div style={{ position: "absolute", top: 6, right: 6, display: "flex", gap: 5, zIndex: 30 }}>
+                <IconButton
+                    label={menuOpen ? "閉じる" : "設定"}
+                    size={controlSize}
+                    onClick={() => setMenuOpen((open) => !open)}
                     onMouseDown={preventFocus}
-                    tabIndex={-1}
-                    style={{ ...btnStyle, width: btnSize, height: btnSize, fontSize: Math.max(7, btnSize * 0.5) }}
-                    title={menuOpen ? "設定を閉じる" : "設定"}
                 >
-                    <span style={{
-                        display: "inline-block",
-                        transition: "transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)",
-                        transform: menuOpen ? "rotate(90deg)" : "rotate(0deg)"
-                    }}>
-                        {menuOpen ? "✕" : "⚙"}
-                    </span>
-                </button>
+                    {menuOpen ? "×" : "⚙"}
+                </IconButton>
                 {!menuOpen && (
-                    <button
-                        onClick={handleClose}
-                        onMouseDown={preventFocus}
-                        tabIndex={-1}
-                        style={{ ...btnStyle, width: btnSize, height: btnSize, fontSize: Math.max(7, btnSize * 0.5) }}
-                        title="メイン画面に戻る"
-                    >✕</button>
+                    <IconButton label="メイン画面へ" size={controlSize} onClick={handleClose} onMouseDown={preventFocus}>
+                        ↗
+                    </IconButton>
                 )}
             </div>
 
-            {/* ポップアップメニュー */}
-            {menuOpen && (
-                <div style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: "100%",
-                    background: "rgba(20,20,30,0.95)",
-                    zIndex: 15,
-                    display: "flex",
-                    flexDirection: "column",
-                    padding: "26px 10px 8px",
-                    gap: 8,
-                    fontFamily: "'Inter','Segoe UI',sans-serif",
-                    boxSizing: "border-box",
-                }}>
-                    {/* ビューモード */}
-                    <div>
-                        <div style={{ fontSize: 8, color: "rgba(255,255,255,0.5)", marginBottom: 4, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>
-                            ビューモード
-                        </div>
-                        <div style={{ display: "flex", gap: 4 }}>
-                            {(["circle", "waveform"] as ViewMode[]).map(mode => (
-                                <button
-                                    key={mode}
-                                    onClick={() => { setViewMode(mode); saveViewMode(mode); }}
-                                    onMouseDown={preventFocus}
-                                    tabIndex={-1}
-                                    style={{
-                                        flex: 1,
-                                        padding: "4px 0",
-                                        fontSize: 9,
-                                        fontWeight: viewMode === mode ? 700 : 400,
-                                        background: viewMode === mode ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.05)",
-                                        border: viewMode === mode ? "1px solid rgba(255,255,255,0.3)" : "1px solid rgba(255,255,255,0.1)",
-                                        borderRadius: 4,
-                                        color: viewMode === mode ? "#fff" : "rgba(255,255,255,0.6)",
-                                        cursor: "pointer",
-                                    }}
-                                >{mode === "circle" ? "◉ サークル" : "≋ ウェーブ"}</button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* テーマ選択 */}
-                    <div>
-                        <div style={{ fontSize: 8, color: "rgba(255,255,255,0.5)", marginBottom: 4, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>
-                            テーマ
-                        </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 3 }}>
-                            {THEME_LIST.map(t => (
-                                <button
-                                    key={t.id}
-                                    onClick={() => handleThemeChange(t.id)}
-                                    onMouseDown={preventFocus}
-                                    tabIndex={-1}
-                                    style={{
-                                        padding: "3px 0",
-                                        fontSize: 8,
-                                        fontWeight: theme === t.id ? 700 : 400,
-                                        background: theme === t.id ? "rgba(255,255,255,0.12)" : "transparent",
-                                        border: theme === t.id ? `1px solid ${t.color}60` : "1px solid rgba(255,255,255,0.08)",
-                                        borderRadius: 3,
-                                        color: theme === t.id ? t.color : "rgba(255,255,255,0.55)",
-                                        cursor: "pointer",
-                                        display: "flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        gap: 3,
-                                    }}
-                                >
-                                    <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 3, background: t.color }} />
-                                    {t.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* メインコンテンツ（メニュー閉じている時のみ表示） */}
-            {!menuOpen && (
-                <div style={{ width: "100vw", height: "100vh", overflow: "hidden", position: "relative" }}>
-                    <canvas
-                        ref={canvasRef}
-                        style={{ width: winW, height: winH, display: "block", pointerEvents: "none" }}
-                    />
-                    <div data-tauri-drag-region style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }} />
+            {menuOpen ? (
+                <FloatingMenu
+                    palette={palette}
+                    theme={theme}
+                    viewMode={viewMode}
+                    onThemeChange={handleThemeChange}
+                    onViewModeChange={saveViewMode}
+                    onMouseDown={preventFocus}
+                />
+            ) : (
+                <>
+                    <canvas ref={canvasRef} style={{ width: winW, height: winH, display: "block", pointerEvents: "none" }} />
                     <button
                         onClick={handleClick}
                         onMouseDown={preventFocus}
                         tabIndex={-1}
+                        aria-label="録音の開始または停止"
+                        title="録音の開始 / 停止"
                         style={{
                             position: "absolute",
                             top: "50%",
                             left: "50%",
-                            transform: "translate(-50%,-50%)",
-                            width: isWaveform ? "60%" : "60%",
-                            height: isWaveform ? "80%" : "60%",
-                            borderRadius: isWaveform ? 8 : "50%",
+                            transform: "translate(-50%, -50%)",
+                            width: isWaveform ? "72%" : "64%",
+                            height: isWaveform ? "68%" : "64%",
+                            borderRadius: isWaveform ? 16 : "50%",
                             background: "transparent",
                             border: "none",
                             cursor: "pointer",
-                            zIndex: 5,
+                            zIndex: 10,
                             padding: 0,
                         }}
-                        title="録音開始/停止"
                     />
-                </div>
+                </>
             )}
 
             {status === "error" && errorMsg && !menuOpen && (
                 <div
+                    title={errorMsg}
                     style={{
                         position: "absolute",
-                        bottom: 2,
-                        left: "50%",
-                        transform: "translateX(-50%)",
-                        background: "rgba(220,38,38,0.9)",
+                        left: 12,
+                        right: 48,
+                        bottom: 9,
+                        zIndex: 25,
                         color: "#fff",
-                        fontSize: 7,
-                        fontWeight: 600,
-                        padding: "2px 6px",
-                        borderRadius: 4,
-                        whiteSpace: "nowrap",
-                        maxWidth: winW * 0.9,
+                        background: "rgba(220, 38, 38, 0.88)",
+                        border: "1px solid rgba(255, 255, 255, 0.25)",
+                        borderRadius: 7,
+                        padding: "3px 7px",
+                        fontSize: 10,
+                        fontWeight: 700,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
-                        zIndex: 20,
+                        whiteSpace: "nowrap",
                     }}
-                    title={errorMsg}
-                >⚠ {errorMsg.length > 25 ? errorMsg.slice(0, 25) + "…" : errorMsg}</div>
+                >
+                    {errorMsg}
+                </div>
             )}
         </div>
     );
 }
 
+function FloatingMenu({
+    palette,
+    theme,
+    viewMode,
+    onThemeChange,
+    onViewModeChange,
+    onMouseDown,
+}: {
+    palette: Palette;
+    theme: ThemeId;
+    viewMode: ViewMode;
+    onThemeChange: (id: ThemeId) => void;
+    onViewModeChange: (mode: ViewMode) => void;
+    onMouseDown: (e: React.MouseEvent) => void;
+}) {
+    const themes: { id: ThemeId; label: string; color: string }[] = [
+        { id: "cyberpunk", label: "Cyber", color: PALETTES.cyberpunk.line },
+        { id: "simple", label: "Simple", color: PALETTES.simple.line },
+        { id: "pop", label: "Pop", color: PALETTES.pop.line },
+        { id: "natural", label: "Natural", color: PALETTES.natural.line },
+        { id: "midnight", label: "Night", color: PALETTES.midnight.line },
+        { id: "retro", label: "Retro", color: PALETTES.retro.line },
+    ];
+
+    return (
+        <div
+            style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 20,
+                boxSizing: "border-box",
+                padding: "38px 14px 14px",
+                background: `linear-gradient(145deg, ${palette.bg0}, ${palette.bg1})`,
+                color: palette.text,
+            }}
+        >
+            <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 4 }}>フローティング表示</div>
+                <div style={{ fontSize: 10, color: palette.dim, lineHeight: 1.45 }}>
+                    見た目とカラーテーマを切り替えます。設定中もウィンドウはドラッグできます。
+                </div>
+            </div>
+
+            <div style={{ fontSize: 9, color: palette.dim, fontWeight: 900, marginBottom: 7 }}>表示モード</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                {(["waveform", "circle"] as ViewMode[]).map((mode) => (
+                    <button
+                        key={mode}
+                        onClick={() => onViewModeChange(mode)}
+                        onMouseDown={onMouseDown}
+                        tabIndex={-1}
+                        style={menuButtonStyle(viewMode === mode, palette)}
+                    >
+                        <span style={{ fontSize: 14 }}>{mode === "waveform" ? "▥" : "○"}</span>
+                        {mode === "waveform" ? "ラインとバー" : "リング"}
+                    </button>
+                ))}
+            </div>
+
+            <div style={{ fontSize: 9, color: palette.dim, fontWeight: 900, marginBottom: 7 }}>カラーテーマ</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                {themes.map((item) => (
+                    <button
+                        key={item.id}
+                        onClick={() => onThemeChange(item.id)}
+                        onMouseDown={onMouseDown}
+                        tabIndex={-1}
+                        style={menuButtonStyle(theme === item.id, { ...palette, line: item.color })}
+                    >
+                        <span style={{ width: 8, height: 8, borderRadius: 8, background: item.color, boxShadow: `0 0 10px ${item.color}` }} />
+                        {item.label}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function IconButton({
+    children,
+    label,
+    size,
+    onClick,
+    onMouseDown,
+}: {
+    children: React.ReactNode;
+    label: string;
+    size: number;
+    onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+    onMouseDown: (e: React.MouseEvent) => void;
+}) {
+    return (
+        <button
+            onClick={onClick}
+            onMouseDown={onMouseDown}
+            tabIndex={-1}
+            aria-label={label}
+            title={label}
+            style={{
+                width: size,
+                height: size,
+                borderRadius: 7,
+                border: "1px solid rgba(255, 255, 255, 0.22)",
+                background: "rgba(12, 14, 24, 0.42)",
+                color: "rgba(255, 255, 255, 0.9)",
+                backdropFilter: "blur(8px)",
+                boxShadow: "0 8px 20px rgba(0, 0, 0, 0.16)",
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                fontSize: Math.max(13, size * 0.58),
+                lineHeight: 1,
+                padding: 0,
+            }}
+        >
+            {children}
+        </button>
+    );
+}
+
+function menuButtonStyle(active: boolean, palette: Palette): React.CSSProperties {
+    return {
+        minHeight: 34,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 6,
+        borderRadius: 8,
+        border: active ? `1px solid ${hexToRgba(palette.line, 0.72)}` : "1px solid rgba(255, 255, 255, 0.12)",
+        background: active ? hexToRgba(palette.line, 0.16) : "rgba(255, 255, 255, 0.06)",
+        color: active ? palette.text : palette.dim,
+        fontSize: 10,
+        fontWeight: 800,
+        cursor: "pointer",
+        padding: "0 8px",
+    };
+}
+
+function drawWaveform(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    palette: Palette,
+    status: FloatingStatus,
+    level: number,
+    peak: number,
+    t: number,
+    bars: number[],
+    wave: number[],
+) {
+    const live = status === "recording";
+    const danger = status === "error";
+    const activity = live ? level : status === "idle" ? 0.08 : 0.24;
+    const radius = Math.min(22, height / 3);
+
+    drawRoundedGradientPanel(ctx, width, height, radius, palette, danger);
+    drawGrid(ctx, width, height, palette, t);
+
+    const left = 18;
+    const right = width - 18;
+    const top = 24;
+    const bottom = height - 17;
+    const areaW = Math.max(80, right - left);
+    const midY = (top + bottom) / 2;
+    const maxH = (bottom - top) * 0.92;
+    const gap = width < 280 ? 2 : 3;
+    const desiredBarW = width < 280 ? 4 : 5;
+    const barCount = Math.max(18, Math.min(54, Math.floor((areaW + gap) / (desiredBarW + gap))));
+    const barW = Math.max(2.5, (areaW - gap * (barCount - 1)) / barCount);
+
+    for (let i = 0; i < barCount; i += 1) {
+        const center = 1 - Math.abs(i - (barCount - 1) / 2) / ((barCount - 1) / 2);
+        const pulse = Math.sin(t * 0.08 + i * 0.62) * 0.5 + 0.5;
+        const randomBeat = live ? Math.random() * 0.42 : 0;
+        const target = Math.max(4, maxH * (0.08 + activity * (0.28 + center * 0.52 + pulse * 0.24 + randomBeat)));
+        bars[i] += (target - bars[i]) * (live ? 0.24 : 0.12);
+
+        const x = left + i * (barW + gap);
+        const h = Math.min(maxH, bars[i]);
+        const y = midY - h / 2;
+        const intensity = h / maxH;
+        const grad = ctx.createLinearGradient(0, y, 0, y + h);
+        grad.addColorStop(0, danger ? palette.danger : hexToRgba(palette.line2, 0.86));
+        grad.addColorStop(0.55, hexToRgba(danger ? palette.danger : palette.bars, 0.68 + intensity * 0.28));
+        grad.addColorStop(1, hexToRgba(palette.line, 0.38 + intensity * 0.26));
+
+        ctx.save();
+        ctx.shadowColor = danger ? palette.danger : palette.line;
+        ctx.shadowBlur = live ? 7 + intensity * 12 : 2;
+        ctx.fillStyle = grad;
+        roundRect(ctx, x, y, barW, h, Math.min(6, barW));
+        ctx.fill();
+        ctx.restore();
+    }
+
+    const wavePoints = Math.max(64, Math.round(areaW / 2.5));
+    while (wave.length < wavePoints) wave.push(level || 0.05);
+    while (wave.length > wavePoints) wave.shift();
+    for (let i = 0; i < wavePoints; i += 1) {
+        const xRatio = i / Math.max(1, wavePoints - 1);
+        const carrier = Math.sin(t * 0.16 + xRatio * Math.PI * 18);
+        const harmonic = Math.sin(t * 0.055 + xRatio * Math.PI * 7.5);
+        const target = (live ? level : 0.09) * (0.62 + carrier * 0.24 + harmonic * 0.14);
+        wave[i] += (Math.max(0.03, target) - wave[i]) * (live ? 0.18 : 0.08);
+    }
+    drawWaveLine(ctx, wave, left, right, top, bottom, palette.line, t, 1);
+    drawWaveLine(ctx, wave, left, right, top + 9, bottom - 9, palette.line2, t + 18, -1);
+
+    const meterX = width - 92;
+    const meterY = 25;
+    drawStatusPill(ctx, meterX, meterY, palette, status, live, danger);
+
+    ctx.save();
+    ctx.fillStyle = palette.dim;
+    ctx.font = "700 8px Inter, Segoe UI, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("VOXTRO", 18, 17);
+    ctx.textAlign = "right";
+    ctx.fillText(`${Math.round(peak * 100).toString().padStart(2, "0")}%`, width - 16, height - 12);
+    ctx.restore();
+}
+
+function drawOrb(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    palette: Palette,
+    status: FloatingStatus,
+    level: number,
+    peak: number,
+    t: number,
+    bars: number[],
+) {
+    const live = status === "recording";
+    const danger = status === "error";
+    const size = Math.min(width, height);
+    const cx = width / 2;
+    const cy = height / 2;
+    const outer = size / 2 - 4;
+    const inner = size * 0.24;
+
+    drawRoundedGradientPanel(ctx, width, height, outer, palette, danger);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * (live ? 0.018 : 0.006));
+    ctx.strokeStyle = hexToRgba(danger ? palette.danger : palette.line, 0.34 + peak * 0.42);
+    ctx.lineWidth = 1.3;
+    ctx.shadowColor = danger ? palette.danger : palette.line;
+    ctx.shadowBlur = live ? 14 + peak * 18 : 6;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, outer * 0.78, outer * 0.48, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.rotate(Math.PI / 2.6);
+    ctx.strokeStyle = hexToRgba(palette.line2, 0.24 + peak * 0.36);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, outer * 0.74, outer * 0.44, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    const count = 48;
+    for (let i = 0; i < count; i += 1) {
+        const pulse = Math.sin(t * 0.09 + i * 0.48) * 0.5 + 0.5;
+        const target = Math.max(2, (live ? level : 0.05) * outer * (0.18 + pulse * 0.38 + Math.random() * 0.24));
+        bars[i] += (target - bars[i]) * (live ? 0.22 : 0.1);
+        const a = (i / count) * Math.PI * 2 - Math.PI / 2;
+        const barH = Math.min(outer * 0.42, bars[i]);
+        const r0 = inner + outer * 0.18;
+        const x0 = cx + Math.cos(a) * r0;
+        const y0 = cy + Math.sin(a) * r0;
+        const x1 = cx + Math.cos(a) * (r0 + barH);
+        const y1 = cy + Math.sin(a) * (r0 + barH);
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.strokeStyle = hexToRgba(i % 3 === 0 ? palette.line2 : palette.line, live ? 0.38 + barH / outer : 0.16);
+        ctx.lineWidth = 2.2;
+        ctx.lineCap = "round";
+        ctx.stroke();
+    }
+
+    const core = ctx.createRadialGradient(cx, cy, 1, cx, cy, inner * 1.4);
+    core.addColorStop(0, hexToRgba(danger ? palette.danger : palette.accent, live ? 0.92 : 0.72));
+    core.addColorStop(0.52, hexToRgba(palette.line, 0.24 + peak * 0.38));
+    core.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = core;
+    ctx.beginPath();
+    ctx.arc(cx, cy, inner * (1.05 + peak * 0.2), 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.fillStyle = danger ? palette.danger : palette.text;
+    ctx.font = "800 13px Inter, Segoe UI, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(STATUS_LABEL[status], cx, cy + 1);
+    ctx.restore();
+}
+
+function drawRoundedGradientPanel(ctx: CanvasRenderingContext2D, width: number, height: number, radius: number, palette: Palette, danger: boolean) {
+    ctx.clearRect(0, 0, width, height);
+    const bg = ctx.createLinearGradient(0, 0, width, height);
+    bg.addColorStop(0, danger ? "#321017" : palette.bg0);
+    bg.addColorStop(0.58, palette.bg1);
+    bg.addColorStop(1, danger ? "#4a1420" : palette.bg0);
+    ctx.fillStyle = bg;
+    roundRect(ctx, 0, 0, width, height, radius);
+    ctx.fill();
+
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    const glow = ctx.createRadialGradient(width * 0.18, height * 0.12, 0, width * 0.18, height * 0.12, width * 0.62);
+    glow.addColorStop(0, hexToRgba(danger ? palette.danger : palette.line, 0.28));
+    glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = glow;
+    roundRect(ctx, 0, 0, width, height, radius);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.strokeStyle = hexToRgba(danger ? palette.danger : palette.line, 0.26);
+    ctx.lineWidth = 1;
+    roundRect(ctx, 0.5, 0.5, width - 1, height - 1, Math.max(0, radius - 0.5));
+    ctx.stroke();
+}
+
+function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number, palette: Palette, t: number) {
+    ctx.save();
+    ctx.strokeStyle = palette.grid;
+    ctx.lineWidth = 1;
+    for (let x = 16 - (t % 16); x < width; x += 16) {
+        ctx.beginPath();
+        ctx.moveTo(x, 15);
+        ctx.lineTo(x, height - 13);
+        ctx.stroke();
+    }
+    for (let y = 20; y < height - 12; y += 15) {
+        ctx.beginPath();
+        ctx.moveTo(14, y);
+        ctx.lineTo(width - 14, y);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+function drawWaveLine(
+    ctx: CanvasRenderingContext2D,
+    wave: number[],
+    left: number,
+    right: number,
+    top: number,
+    bottom: number,
+    color: string,
+    t: number,
+    direction: number,
+) {
+    const mid = (top + bottom) / 2;
+    const amp = (bottom - top) * 0.44;
+    const step = (right - left) / Math.max(1, wave.length - 1);
+
+    ctx.save();
+    ctx.beginPath();
+    wave.forEach((value, i) => {
+        const x = left + i * step;
+        const phase = Math.sin(t * 0.07 + i * 0.42) * 0.18;
+        const y = mid + direction * (value + phase) * amp;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = hexToRgba(color, 0.78);
+    ctx.lineWidth = 1.7;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.stroke();
+    ctx.restore();
+}
+
+function drawStatusPill(ctx: CanvasRenderingContext2D, x: number, y: number, palette: Palette, status: FloatingStatus, live: boolean, danger: boolean) {
+    const color = danger ? palette.danger : live ? palette.accent : palette.line;
+    ctx.save();
+    ctx.fillStyle = danger ? "rgba(110, 12, 32, 0.94)" : "rgba(9, 12, 24, 0.94)";
+    ctx.strokeStyle = hexToRgba(color, 0.76);
+    ctx.shadowColor = color;
+    ctx.shadowBlur = live ? 16 : 8;
+    roundRect(ctx, x - 33, y - 13, 66, 26, 13);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    ctx.beginPath();
+    ctx.arc(x - 21, y, 4.2, 0, Math.PI * 2);
+    ctx.fillStyle = hexToRgba(color, live ? 0.7 + Math.sin(performance.now() * 0.012) * 0.25 : 0.78);
+    ctx.shadowColor = color;
+    ctx.shadowBlur = live ? 12 : 3;
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.42)";
+    ctx.font = "900 10px Arial, Segoe UI, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.strokeText(STATUS_LABEL[status], x - 10, y + 0.5);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(STATUS_LABEL[status], x - 10, y + 0.5);
+    ctx.restore();
+}
+
+function withAccent(palette: Palette, colors: [string, string]): Palette {
+    return {
+        ...palette,
+        line: colors[0] || palette.line,
+        line2: colors[1] || palette.line2,
+    };
+}
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
+    const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + width, y, x + width, y + height, r);
+    ctx.arcTo(x + width, y + height, x, y + height, r);
+    ctx.arcTo(x, y + height, x, y, r);
+    ctx.arcTo(x, y, x + width, y, r);
+    ctx.closePath();
+}
+
 function hexToRgba(hex: string, alpha: number): string {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
+    const safe = hex.startsWith("#") ? hex : "#ffffff";
+    const r = parseInt(safe.slice(1, 3), 16);
+    const g = parseInt(safe.slice(3, 5), 16);
+    const b = parseInt(safe.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(alpha, 1))})`;
 }

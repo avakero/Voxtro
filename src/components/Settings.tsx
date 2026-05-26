@@ -17,9 +17,10 @@ import { THEMES, ThemeId } from "../lib/themes";
 
 interface Props {
   onBack: () => void;
+  isFirstRun?: boolean;
 }
 
-export default function Settings({ onBack }: Props) {
+export default function Settings({ onBack, isFirstRun }: Props) {
   const { theme, setTheme } = useTheme();
   const [apiKey, setApiKey] = useState("");
   const [shortcut, setShortcut] = useState("Ctrl+Shift+K");
@@ -32,6 +33,8 @@ export default function Settings({ onBack }: Props) {
   const [isMsgError, setIsMsgError] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [accentColor, setAccentColor] = useState("ocean");
+  const [apiKeyExpanded, setApiKeyExpanded] = useState(false);
+  const [setupStatus, setSetupStatus] = useState<{ hasBin: boolean; hasModel: boolean } | null>(null);
 
   const isCyberpunk = theme === "cyberpunk";
   const isPop = theme === "pop";
@@ -48,19 +51,29 @@ export default function Settings({ onBack }: Props) {
     neon: { label: "ネオン", colors: ["#00f0ff", "#ff00aa"] },
   };
 
+  const refreshSetup = async () => {
+    try {
+      const [hasBin, hasModel] = await invoke<[boolean, boolean]>("check_setup");
+      setSetupStatus({ hasBin, hasModel });
+    } catch (e) {
+      console.error("Setup check failed:", e);
+    }
+  };
+
   useEffect(() => {
     getApiKey().then((k) => { if (k) setApiKey(k); });
     getShortcut().then((k) => setShortcut(k));
     getModel().then((m) => setModel(m));
     getAccentColor().then((c) => setAccentColor(c));
+    refreshSetup();
 
     const ul1 = listen<number>("model-download-progress", ({ payload }) => {
       setDownloadProgress(payload);
-      if (payload >= 100) setDownloading(false);
+      if (payload >= 100) { setDownloading(false); refreshSetup(); }
     });
     const ul2 = listen<number>("bin-download-progress", ({ payload }) => {
       setBinProgress(payload);
-      if (payload >= 100) setBinDownloading(false);
+      if (payload >= 100) { setBinDownloading(false); refreshSetup(); }
     });
     return () => { ul1.then((fn) => fn()); ul2.then((fn) => fn()); };
   }, []);
@@ -232,6 +245,70 @@ export default function Settings({ onBack }: Props) {
           }}
         >
           {isMsgError ? "⚠ " : "✓ "}{saveMsg}
+        </div>
+      )}
+
+      {/* First-run setup wizard */}
+      {isFirstRun && setupStatus && (
+        <div style={{
+          background: "var(--t-bg-card)",
+          border: `2px solid ${setupStatus.hasBin && setupStatus.hasModel ? "var(--t-success)" : "var(--t-primary)"}`,
+          borderRadius: "var(--t-radius-lg)",
+          padding: 20,
+          marginBottom: 20,
+          boxShadow: setupStatus.hasBin && setupStatus.hasModel ? "none" : "var(--t-glow)",
+          animation: "fadeIn 0.4s ease-out",
+        }}>
+          <div style={{
+            fontSize: 16,
+            fontWeight: 700,
+            fontFamily: "var(--t-font-display)",
+            background: "var(--t-gradient)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+            marginBottom: 6,
+          }}>
+            {isCyberpunk ? "▸ INITIAL SETUP" : isRetro ? "> INIT_SETUP" : "🚀 初回セットアップ"}
+          </div>
+          <p style={{ fontSize: 12, color: "var(--t-text-dim)", marginBottom: 16 }}>
+            Voxtro を使い始めるには、以下をダウンロードしてください。
+          </p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[{ done: setupStatus.hasBin, label: "Whisper CLI バイナリ", hint: "下の「音声エンジン」セクションからダウンロード" },
+              { done: setupStatus.hasModel, label: "Whisper モデル", hint: "下の「AIモデル」セクションからダウンロード" },
+            ].map((step, i) => (
+              <div key={i} style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "8px 12px", borderRadius: "var(--t-radius)",
+                background: step.done ? "rgba(0,255,136,0.06)" : "rgba(255,200,0,0.06)",
+                border: `1px solid ${step.done ? "var(--t-success)" : "var(--t-warning)"}`,
+              }}>
+                <span style={{ fontSize: 16 }}>{step.done ? "✅" : "⬇️"}</span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--t-text)" }}>
+                    Step {i + 1}: {step.label}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--t-text-dim)" }}>
+                    {step.done ? "ダウンロード済み" : step.hint}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {setupStatus.hasBin && setupStatus.hasModel && (
+            <div style={{
+              marginTop: 14, padding: "10px 16px",
+              background: "rgba(0,255,136,0.08)",
+              border: "1px solid var(--t-success)",
+              borderRadius: "var(--t-radius)",
+              fontSize: 13, fontWeight: 600,
+              color: "var(--t-success)",
+              textAlign: "center",
+              animation: "fadeIn 0.3s ease-out",
+            }}>
+              ✨ {isCyberpunk ? "SETUP COMPLETE — Press back to start" : "セットアップ完了！「← 戻る」ボタンで使い始めましょう"}
+            </div>
+          )}
         </div>
       )}
 
@@ -491,27 +568,70 @@ export default function Settings({ onBack }: Props) {
 
       {/* Gemini API Key */}
       <div style={sectionStyle}>
-        <span style={labelStyle}>{isCyberpunk ? "Gemini API Key" : "Gemini APIキー"}</span>
-        <p style={{ fontSize: 12, color: "var(--t-text-dim)", marginBottom: 10 }}>
-          未入力の場合、Whisper の認識テキストをそのままペーストします。
-          <br />
-          <a
-            href="https://aistudio.google.com/app/apikey"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: "var(--t-primary)" }}
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+          <div>
+            <span style={{ ...labelStyle, marginBottom: 4 }}>{isCyberpunk ? "Gemini API Key" : "Gemini APIキー"}</span>
+            <p style={{ fontSize: 12, color: "var(--t-text-dim)", margin: 0, lineHeight: 1.65 }}>
+              音声認識後の文章をLLMで整える機能を使う場合だけ設定します。
+              通常の文字起こしだけなら入力しなくて大丈夫です。
+            </p>
+          </div>
+          <button
+            onClick={() => setApiKeyExpanded((open) => !open)}
+            style={{
+              flexShrink: 0,
+              padding: "7px 10px",
+              fontSize: 11,
+              fontWeight: 700,
+              border: "1px solid var(--t-border-active)",
+              color: "var(--t-primary)",
+              borderRadius: "var(--t-radius)",
+              background: "var(--t-input-bg)",
+            }}
           >
-            Google AI Studio でキーを取得 →
-          </a>
-        </p>
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder="AIza... （省略可）"
-          style={{ marginBottom: 8 }}
-        />
-        <button onClick={handleApiKeySave}>{isCyberpunk ? "SAVE" : "保存"}</button>
+            {apiKeyExpanded ? "閉じる" : apiKey ? "変更" : "入力"}
+          </button>
+        </div>
+
+        {apiKeyExpanded && (
+          <div style={{ marginTop: 14, animation: "fadeIn 0.2s ease-out" }}>
+            <div
+              style={{
+                padding: "10px 12px",
+                border: "1px solid var(--t-warning)",
+                borderRadius: "var(--t-radius)",
+                background: "rgba(245, 158, 11, 0.10)",
+                color: "var(--t-text)",
+                fontSize: 12,
+                lineHeight: 1.65,
+                marginBottom: 10,
+              }}
+            >
+              LLM整形を使うと、認識されたテキストがGemini APIへ送信されます。
+              機密情報や外部送信したくない内容を扱う場合は、APIキーを設定しないでください。
+            </div>
+            <p style={{ fontSize: 12, color: "var(--t-text-dim)", margin: "0 0 10px", lineHeight: 1.6 }}>
+              APIキーはGoogle AI Studioで作成できます。保存すると、次回以降の文字起こしでLLM整形が有効になります。
+              <br />
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--t-primary)", fontWeight: 700 }}
+              >
+                Google AI StudioでAPIキーを作成
+              </a>
+            </p>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="AIza..."
+              style={{ marginBottom: 8 }}
+            />
+            <button onClick={handleApiKeySave}>{isCyberpunk ? "SAVE" : "保存"}</button>
+          </div>
+        )}
       </div>
     </div>
   );
