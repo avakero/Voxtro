@@ -60,6 +60,18 @@ async fn download_whisper_bin(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// 実行中のダウンロードをキャンセルする。
+#[tauri::command]
+fn cancel_download() {
+    transcribe::cancel_active_download();
+}
+
+/// セットアップ状況を返す: (whisper-cli バイナリの有無, 選択中モデルの有無)
+#[tauri::command]
+fn check_setup(app: tauri::AppHandle) -> (bool, bool) {
+    transcribe::check_setup(&app)
+}
+
 /// フローティングウィンドウからの録音トグル
 #[tauri::command]
 async fn toggle_recording_command(app: tauri::AppHandle) -> Result<(), String> {
@@ -279,6 +291,8 @@ pub fn run() {
             paste_text,
             download_model,
             download_whisper_bin,
+            cancel_download,
+            check_setup,
             update_shortcut,
             toggle_recording_command,
             switch_to_floating,

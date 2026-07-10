@@ -1,9 +1,30 @@
 export type ThemeId = "cyberpunk" | "simple" | "pop" | "natural" | "midnight" | "retro";
 
+/** テーマごとのUI文言 — コンポーネント内の三項演算子の散乱を避けるため一元管理する */
+export interface ThemeLabels {
+  subtitle: string;
+  config: string;
+  float: string;
+  errorLabel: string;
+  outputLabel: string;
+  back: string;
+  settingsTitle: string;
+}
+
+/** テーマ選択カードのプレビュー配色 */
+export interface ThemePreview {
+  bg: string;
+  accent: string;
+  text: string;
+  border: string;
+}
+
 export interface ThemeDefinition {
   id: ThemeId;
   label: string;
   description: string;
+  labels: ThemeLabels;
+  preview: ThemePreview;
   vars: Record<string, string>;
 }
 
@@ -12,6 +33,16 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
     id: "cyberpunk",
     label: "サイバーパンク",
     description: "ネオンが光る近未来スタイル",
+    labels: {
+      subtitle: "Voice Recognition System",
+      config: "⚙ CONFIG",
+      float: "◈ FLOAT MODE",
+      errorLabel: "ERROR LOG",
+      outputLabel: "OUTPUT",
+      back: "← BACK",
+      settingsTitle: "CONFIG",
+    },
+    preview: { bg: "#0d0d1a", accent: "#00f0ff", text: "#e0e6ff", border: "rgba(0,240,255,0.4)" },
     vars: {
       "--t-bg-deep": "#0a0a0f",
       "--t-bg": "#0d0d1a",
@@ -24,7 +55,7 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
       "--t-warning": "#ffe600",
       "--t-danger": "#ff3366",
       "--t-text": "#e0e6ff",
-      "--t-text-dim": "#6b7ea6",
+      "--t-text-dim": "#7d90b8",
       "--t-border": "rgba(0, 240, 255, 0.15)",
       "--t-border-active": "rgba(0, 240, 255, 0.5)",
       "--t-glow": "0 0 10px rgba(0, 240, 255, 0.3), 0 0 30px rgba(0, 240, 255, 0.1)",
@@ -53,6 +84,16 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
     id: "simple",
     label: "シンプル",
     description: "清潔感のある誠実なスタイル",
+    labels: {
+      subtitle: "音声認識ツール",
+      config: "⚙ 設定",
+      float: "フロートモード",
+      errorLabel: "エラー",
+      outputLabel: "出力",
+      back: "← 戻る",
+      settingsTitle: "設定",
+    },
+    preview: { bg: "#f7f8fa", accent: "#2563eb", text: "#1e293b", border: "rgba(37,99,235,0.4)" },
     vars: {
       "--t-bg-deep": "#f0f2f5",
       "--t-bg": "#f7f8fa",
@@ -65,7 +106,7 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
       "--t-warning": "#ca8a04",
       "--t-danger": "#dc2626",
       "--t-text": "#1e293b",
-      "--t-text-dim": "#94a3b8",
+      "--t-text-dim": "#64748b",
       "--t-border": "rgba(0, 0, 0, 0.08)",
       "--t-border-active": "rgba(37, 99, 235, 0.4)",
       "--t-glow": "0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06)",
@@ -94,6 +135,16 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
     id: "pop",
     label: "ポップ",
     description: "可愛くて楽しいスタイル",
+    labels: {
+      subtitle: "✨ 音声認識ツール",
+      config: "⚙ せってい",
+      float: "🫧 フロート",
+      errorLabel: "エラー",
+      outputLabel: "✨ 出力",
+      back: "← もどる",
+      settingsTitle: "⚙ せってい",
+    },
+    preview: { bg: "#fdf2f8", accent: "#ec4899", text: "#4a1d4e", border: "rgba(236,72,153,0.4)" },
     vars: {
       "--t-bg-deep": "#fce7f3",
       "--t-bg": "#fdf2f8",
@@ -106,7 +157,7 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
       "--t-warning": "#fbbf24",
       "--t-danger": "#f43f5e",
       "--t-text": "#4a1d4e",
-      "--t-text-dim": "#a78bab",
+      "--t-text-dim": "#8a6790",
       "--t-border": "rgba(236, 72, 153, 0.15)",
       "--t-border-active": "rgba(236, 72, 153, 0.45)",
       "--t-glow": "0 2px 12px rgba(236, 72, 153, 0.15), 0 1px 4px rgba(168, 85, 247, 0.1)",
@@ -135,6 +186,16 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
     id: "natural",
     label: "ナチュラル",
     description: "和紙と木目のリラックススタイル",
+    labels: {
+      subtitle: "声 — 音声認識ツール",
+      config: "⚙ 設定",
+      float: "🍃 フロート",
+      errorLabel: "エラー",
+      outputLabel: "出力",
+      back: "← 戻る",
+      settingsTitle: "設定",
+    },
+    preview: { bg: "#f5f0e8", accent: "#5a7247", text: "#3e3428", border: "rgba(90,114,71,0.4)" },
     vars: {
       "--t-bg-deep": "#e8dfd3",
       "--t-bg": "#f5f0e8",
@@ -147,7 +208,7 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
       "--t-warning": "#c6963a",
       "--t-danger": "#c05746",
       "--t-text": "#3e3428",
-      "--t-text-dim": "#9b8e7e",
+      "--t-text-dim": "#7d6f5c",
       "--t-border": "rgba(90, 114, 71, 0.15)",
       "--t-border-active": "rgba(90, 114, 71, 0.4)",
       "--t-glow": "0 1px 4px rgba(90, 114, 71, 0.1), 0 1px 2px rgba(0,0,0,0.04)",
@@ -176,6 +237,16 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
     id: "midnight",
     label: "ミッドナイト",
     description: "高級感あるダークモダンスタイル",
+    labels: {
+      subtitle: "音声認識ツール",
+      config: "⚙ 設定",
+      float: "✦ フロート",
+      errorLabel: "エラー",
+      outputLabel: "出力",
+      back: "← 戻る",
+      settingsTitle: "設定",
+    },
+    preview: { bg: "#1e1e30", accent: "#d4a853", text: "#e8e4df", border: "rgba(212,168,83,0.4)" },
     vars: {
       "--t-bg-deep": "#1a1a2e",
       "--t-bg": "#1e1e30",
@@ -188,7 +259,7 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
       "--t-warning": "#f59e0b",
       "--t-danger": "#ef4444",
       "--t-text": "#e8e4df",
-      "--t-text-dim": "#8a8698",
+      "--t-text-dim": "#9a96a8",
       "--t-border": "rgba(212, 168, 83, 0.12)",
       "--t-border-active": "rgba(212, 168, 83, 0.4)",
       "--t-glow": "0 1px 6px rgba(212, 168, 83, 0.1), 0 1px 2px rgba(0,0,0,0.15)",
@@ -217,6 +288,16 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
     id: "retro",
     label: "レトロ",
     description: "レトロゲーム風8bitスタイル",
+    labels: {
+      subtitle: "> VOICE_REC",
+      config: "> CONFIG",
+      float: "> FLOAT",
+      errorLabel: "> ERR_LOG",
+      outputLabel: "> OUTPUT",
+      back: "> BACK",
+      settingsTitle: "> CONFIG",
+    },
+    preview: { bg: "#0f1f0f", accent: "#33ff33", text: "#33ff33", border: "rgba(51,255,51,0.4)" },
     vars: {
       "--t-bg-deep": "#0a1a0a",
       "--t-bg": "#0f1f0f",
@@ -229,13 +310,13 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
       "--t-warning": "#ff8c00",
       "--t-danger": "#ff3333",
       "--t-text": "#33ff33",
-      "--t-text-dim": "#228b22",
+      "--t-text-dim": "#44cc44",
       "--t-border": "rgba(51, 255, 51, 0.2)",
       "--t-border-active": "rgba(51, 255, 51, 0.5)",
       "--t-glow": "0 0 8px rgba(51, 255, 51, 0.2), 0 0 20px rgba(51, 255, 51, 0.05)",
       "--t-glow-secondary": "0 0 8px rgba(255, 140, 0, 0.2)",
-      "--t-font-display": "'Press Start 2P', monospace",
-      "--t-font-body": "'Press Start 2P', monospace",
+      "--t-font-display": "'Press Start 2P', 'DotGothic16', monospace",
+      "--t-font-body": "'Press Start 2P', 'DotGothic16', monospace",
       "--t-radius": "0px",
       "--t-radius-lg": "0px",
       "--t-input-bg": "rgba(5, 15, 5, 0.9)",
@@ -249,7 +330,7 @@ export const THEMES: Record<ThemeId, ThemeDefinition> = {
       "--t-corner-border": "rgba(51, 255, 51, 0.3)",
       "--t-letter-spacing": "0px",
       "--t-label-spacing": "1px",
-      "--t-label-size": "8px",
+      "--t-label-size": "10px",
       "--t-section-backdrop": "none",
     },
   },

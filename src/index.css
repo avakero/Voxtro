@@ -1,4 +1,29 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&family=Nunito:wght@300;400;500;600;700;800&family=Noto+Serif+JP:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&family=Press+Start+2P&display=swap');
+/* バンドル済みフォント — オフラインでもテーマの見た目を保証する */
+@import "@fontsource/orbitron/400.css";
+@import "@fontsource/orbitron/600.css";
+@import "@fontsource/orbitron/700.css";
+@import "@fontsource/orbitron/900.css";
+@import "@fontsource/rajdhani/400.css";
+@import "@fontsource/rajdhani/500.css";
+@import "@fontsource/rajdhani/600.css";
+@import "@fontsource/rajdhani/700.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/nunito/400.css";
+@import "@fontsource/nunito/500.css";
+@import "@fontsource/nunito/600.css";
+@import "@fontsource/nunito/700.css";
+@import "@fontsource/nunito/800.css";
+@import "@fontsource/noto-serif-jp/400.css";
+@import "@fontsource/noto-serif-jp/700.css";
+@import "@fontsource/outfit/400.css";
+@import "@fontsource/outfit/500.css";
+@import "@fontsource/outfit/600.css";
+@import "@fontsource/outfit/700.css";
+@import "@fontsource/press-start-2p/400.css";
+@import "@fontsource/dotgothic16/400.css";
 
 :root {
   /* Theme variables — defaults are cyberpunk, overridden by JS */
@@ -13,7 +38,7 @@
   --t-warning: #ffe600;
   --t-danger: #ff3366;
   --t-text: #e0e6ff;
-  --t-text-dim: #6b7ea6;
+  --t-text-dim: #7d90b8;
   --t-border: rgba(0, 240, 255, 0.15);
   --t-border-active: rgba(0, 240, 255, 0.5);
   --t-glow: 0 0 10px rgba(0, 240, 255, 0.3), 0 0 30px rgba(0, 240, 255, 0.1);
@@ -267,4 +292,36 @@ a:hover {
   92% { opacity: 1; }
   93% { opacity: 0.8; }
   94% { opacity: 1; }
+}
+
+/* カード型の選択ボタン（テーマ・カラー選択）用 — グローバル button 装飾を打ち消す */
+.card-btn {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.card-btn::before {
+  display: none;
+}
+.card-btn:hover {
+  box-shadow: none;
+}
+.card-btn:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 2px;
+}
+
+/* フラッシュメッセージ — テーマカラーに追従する */
+.flash-success {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid var(--t-success);
+  color: var(--t-success);
+}
+.flash-error {
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid var(--t-danger);
+  color: var(--t-danger);
+}
+@supports (background: color-mix(in srgb, red 12%, transparent)) {
+  .flash-success { background: color-mix(in srgb, var(--t-success) 12%, transparent); }
+  .flash-error { background: color-mix(in srgb, var(--t-danger) 12%, transparent); }
 }

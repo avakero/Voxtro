@@ -8,8 +8,16 @@
 //! - macOS:   ~/Library/Application Support/voxtro/
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager};
 use tauri_plugin_store::StoreExt;
+
+/// 実行中ダウンロードのキャンセルフラグ（同時に走るダウンロードは1つの想定）
+static DOWNLOAD_CANCELLED: AtomicBool = AtomicBool::new(false);
+
+pub fn cancel_active_download() {
+    DOWNLOAD_CANCELLED.store(true, Ordering::SeqCst);
+}
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -68,6 +76,12 @@ fn whisper_bin_url() -> &'static str {
     "https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.3/whisper-bin-x64.zip"
 }
 
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn whisper_bin_url() -> &'static str {
+    // Linux 向け公式バイナリは無い。CI 等でのコンパイルを通すためのフォールバック
+    "https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.3/whisper-bin-x64.zip"
+}
+
 // ─── パス解決 ─────────────────────────────────────────────────────────────
 
 fn voxtro_data_dir(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -83,6 +97,16 @@ pub fn model_path(app: &tauri::AppHandle, model: &str) -> Result<PathBuf, Box<dy
 
 fn bin_path(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(voxtro_data_dir(app)?.join("bin").join(whisper_bin_name()))
+}
+
+/// セットアップ状況を返す: (whisper-cli バイナリの有無, 選択中モデルの有無)
+pub fn check_setup(app: &tauri::AppHandle) -> (bool, bool) {
+    let has_bin = bin_path(app).map(|p| p.exists()).unwrap_or(false);
+    let model_name = read_model_name(app);
+    let has_model = model_path(app, &model_name)
+        .map(|p| p.exists())
+        .unwrap_or(false);
+    (has_bin, has_model)
 }
 
 // ─── ダウンロード ─────────────────────────────────────────────────────────
@@ -144,6 +168,8 @@ async fn download_file_with_progress(
     use futures_util::StreamExt;
     use tokio::io::AsyncWriteExt;
 
+    DOWNLOAD_CANCELLED.store(false, Ordering::SeqCst);
+
     let response = reqwest::get(url).await?;
     if !response.status().is_success() {
         return Err(format!(
@@ -158,6 +184,12 @@ async fn download_file_with_progress(
     let mut downloaded: u64 = 0;
 
     while let Some(chunk) = stream.next().await {
+        if DOWNLOAD_CANCELLED.load(Ordering::SeqCst) {
+            drop(file);
+            let _ = tokio::fs::remove_file(dest).await;
+            let _ = app.emit(&format!("{event}-cancelled"), ());
+            return Err("ダウンロードをキャンセルしました".into());
+        }
         let chunk = chunk?;
         file.write_all(&chunk).await?;
         downloaded += chunk.len() as u64;

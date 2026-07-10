@@ -52,6 +52,34 @@ export async function saveAccentColor(color: string): Promise<void> {
   await store.save();
 }
 
+const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+async function callGemini(apiKey: string, prompt: string, maxOutputTokens: number): Promise<string> {
+  const res = await fetch(GEMINI_ENDPOINT, {
+    method: "POST",
+    // APIキーはURLクエリではなくヘッダーで送る（ログ等への漏洩リスク低減）
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      // thinkingBudget: 0 — 整形タスクに思考は不要。レイテンシとトークン消費を抑える
+      generationConfig: { temperature: 0.2, maxOutputTokens, thinkingConfig: { thinkingBudget: 0 } },
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Gemini API error ${res.status}: ${body}`);
+  }
+
+  const data = await res.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (typeof text !== "string") {
+    throw new Error("Gemini API から予期しない形式のレスポンスが返されました");
+  }
+  return text.trim();
+}
+
 /**
  * Gemini API を呼び出して日本語テキストを整形する。
  * APIキーが未設定の場合は Error をスローする（呼び出し元でスキップ処理を行う）。
@@ -66,23 +94,15 @@ export async function formatWithGemini(rawText: string): Promise<string> {
     `以下の音声認識テキストから不要なフィラーワード（「えー」「あの」「まあ」「えっと」など）を取り除き、` +
     `適切な句読点を付けた自然な日本語にしてください。テキストのみを返してください。\n\n${rawText}`;
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
-      }),
-    }
-  );
+  return callGemini(apiKey, prompt, 1024);
+}
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Gemini API error ${res.status}: ${body}`);
+/**
+ * APIキーの疎通確認。成功時は resolve、失敗時はエラーメッセージ付きで reject する。
+ */
+export async function testGeminiKey(apiKey: string): Promise<void> {
+  if (!apiKey) {
+    throw new Error("APIキーが入力されていません");
   }
-
-  const data = await res.json();
-  return (data.candidates[0].content.parts[0].text as string).trim();
+  await callGemini(apiKey, "「OK」とだけ返してください。", 64);
 }
