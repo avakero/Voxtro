@@ -1,13 +1,19 @@
 import { useEffect, useState } from "react";
-import { check } from "@tauri-apps/plugin-updater";
+import { check, Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { useTheme } from "../lib/ThemeContext";
 
-type UpdateState = "idle" | "checking" | "available" | "downloading" | "done";
+type UpdateState = "idle" | "available" | "downloading" | "ready";
 
-export default function UpdateChecker() {
+interface Props {
+  /** 録音・文字起こし処理中は true。更新の適用ボタンを無効化する */
+  busy?: boolean;
+}
+
+export default function UpdateChecker({ busy = false }: Props) {
   const { theme } = useTheme();
   const [state, setState] = useState<UpdateState>("idle");
+  const [update, setUpdate] = useState<Update | null>(null);
   const [progress, setProgress] = useState(0);
   const [version, setVersion] = useState("");
   const [error, setError] = useState("");
@@ -21,41 +27,51 @@ export default function UpdateChecker() {
 
   const checkForUpdate = async () => {
     try {
-      setState("checking");
-      const update = await check();
-      if (update) {
-        setVersion(update.version);
+      const found = await check();
+      if (found) {
+        setUpdate(found);
+        setVersion(found.version);
         setState("available");
-
-        let totalBytes = 0;
-        let downloadedBytes = 0;
-
-        await update.downloadAndInstall((event) => {
-          if (event.event === "Started" && event.data.contentLength) {
-            totalBytes = event.data.contentLength;
-            setState("downloading");
-          } else if (event.event === "Progress") {
-            downloadedBytes += event.data.chunkLength;
-            if (totalBytes > 0) {
-              setProgress(Math.round((downloadedBytes / totalBytes) * 100));
-            }
-          } else if (event.event === "Finished") {
-            setState("done");
-          }
-        });
-
-        await relaunch();
-      } else {
-        setState("idle");
       }
     } catch (err) {
       console.warn("更新チェック失敗:", err);
+    }
+  };
+
+  const startDownload = async () => {
+    if (!update) return;
+    try {
+      setError("");
+      setState("downloading");
+      let totalBytes = 0;
+      let downloadedBytes = 0;
+
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started" && event.data.contentLength) {
+          totalBytes = event.data.contentLength;
+        } else if (event.event === "Progress") {
+          downloadedBytes += event.data.chunkLength;
+          if (totalBytes > 0) {
+            setProgress(Math.round((downloadedBytes / totalBytes) * 100));
+          }
+        }
+      });
+
+      setState("ready");
+    } catch (err) {
+      console.warn("更新ダウンロード失敗:", err);
       setError(String(err));
-      setState("idle");
+      setState("available");
     }
   };
 
   if (state === "idle") return null;
+
+  const smallBtnStyle: React.CSSProperties = {
+    fontSize: 11,
+    padding: "5px 12px",
+    borderRadius: "var(--t-radius)",
+  };
 
   return (
     <div
@@ -78,23 +94,25 @@ export default function UpdateChecker() {
         boxShadow: "var(--t-glow)",
       }}
     >
-      {state === "checking" && (
-        <span style={{ letterSpacing: isCyberpunk ? 1 : 0 }}>
-          {isCyberpunk && <span style={{ fontFamily: "var(--t-font-display)", fontSize: 9, marginRight: 8, opacity: 0.7 }}>SYS</span>}
-          更新を確認中...
-        </span>
-      )}
       {state === "available" && (
-        <span style={{ letterSpacing: isCyberpunk ? 0.5 : 0 }}>
-          {isCyberpunk && <span style={{ fontFamily: "var(--t-font-display)", fontSize: 9, marginRight: 8, color: "var(--t-accent)" }}>NEW</span>}
-          v{version} をダウンロード中...
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ letterSpacing: isCyberpunk ? 0.5 : 0, flex: 1 }}>
+            {isCyberpunk && <span style={{ fontFamily: "var(--t-font-display)", fontSize: 9, marginRight: 8, color: "var(--t-accent)" }}>NEW</span>}
+            新しいバージョン v{version} が利用できます
+          </span>
+          <button onClick={startDownload} disabled={busy} style={{ ...smallBtnStyle, fontWeight: 700 }}>
+            今すぐ更新
+          </button>
+          <button onClick={() => setState("idle")} style={{ ...smallBtnStyle, color: "var(--t-text-dim)" }}>
+            後で
+          </button>
+        </div>
       )}
       {state === "downloading" && (
         <div>
           <div style={{ marginBottom: 6 }}>
             {isCyberpunk && <span style={{ fontFamily: "var(--t-font-display)", fontSize: 9, marginRight: 8, color: "var(--t-warning)" }}>DL</span>}
-            ダウンロード中... <span style={{ fontFamily: "var(--t-font-display)" }}>{progress}%</span>
+            v{version} をダウンロード中... <span style={{ fontFamily: "var(--t-font-display)" }}>{progress}%</span>
           </div>
           <div
             style={{
@@ -116,11 +134,21 @@ export default function UpdateChecker() {
           </div>
         </div>
       )}
-      {state === "done" && (
-        <span style={{ color: "var(--t-success)" }}>
-          {isCyberpunk && <span style={{ fontFamily: "var(--t-font-display)", fontSize: 9, marginRight: 8 }}>OK</span>}
-          更新完了 — 再起動します...
-        </span>
+      {state === "ready" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ color: "var(--t-success)", flex: 1 }}>
+            {isCyberpunk && <span style={{ fontFamily: "var(--t-font-display)", fontSize: 9, marginRight: 8 }}>OK</span>}
+            更新の準備ができました
+          </span>
+          <button
+            onClick={() => relaunch()}
+            disabled={busy}
+            title={busy ? "処理が終わってから再起動できます" : undefined}
+            style={{ ...smallBtnStyle, fontWeight: 700 }}
+          >
+            再起動して適用
+          </button>
+        </div>
       )}
       {error && (
         <div style={{ fontSize: 10, color: "var(--t-danger)", marginTop: 4 }}>

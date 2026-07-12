@@ -30,11 +30,11 @@ Whisper.cpp (ローカル推論) + Gemini BYOK で動く、開発者コスト $0
 
 ## 初回セットアップ
 
-1. アプリを起動
-2. **設定画面** → Whisper モデルをダウンロード
+1. アプリを起動すると、初回はセットアップ画面が自動で開きます
+2. **「まとめてダウンロード」** で音声エンジン (whisper-cli) と Whisper モデルを取得
    - `small` (466 MB): 日本語で十分な精度
    - `medium` (1.5 GB): より高精度
-   - `large` (3.1 GB): 最高精度（GPU推奨）
+   - `large` (2.9 GB): 最高精度（GPU推奨）
 3. (任意) [Google AI Studio](https://aistudio.google.com/app/apikey) で Gemini API キーを取得し設定
 4. **Ctrl+Shift+K** で録音開始 → もう一度押して停止 → 自動ペースト
 

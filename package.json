@@ -11,12 +11,20 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@fontsource/dotgothic16": "^5.2.8",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/noto-serif-jp": "^5.2.8",
+    "@fontsource/nunito": "^5.2.7",
+    "@fontsource/orbitron": "^5.2.8",
+    "@fontsource/outfit": "^5.2.8",
+    "@fontsource/press-start-2p": "^5.2.7",
+    "@fontsource/rajdhani": "^5.2.7",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-global-shortcut": "^2",
-    "@tauri-apps/plugin-store": "^2",
-    "@tauri-apps/plugin-shell": "^2",
-    "@tauri-apps/plugin-updater": "^2",
     "@tauri-apps/plugin-process": "^2",
+    "@tauri-apps/plugin-shell": "^2",
+    "@tauri-apps/plugin-store": "^2",
+    "@tauri-apps/plugin-updater": "^2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

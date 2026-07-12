@@ -118,15 +118,15 @@ const VIEW_SIZE: Record<ViewMode, { width: number; height: number }> = {
     waveform: { width: 360, height: 112 },
 };
 
-const MENU_SIZE = { width: 300, height: 260 };
+const MENU_SIZE = { width: 300, height: 306 };
 
 const STATUS_LABEL: Record<FloatingStatus, string> = {
-    idle: "READY",
-    recording: "LIVE",
-    transcribing: "TEXT",
-    formatting: "MAKE",
-    done: "DONE",
-    error: "ERR",
+    idle: "待機",
+    recording: "録音中",
+    transcribing: "変換中",
+    formatting: "整形中",
+    done: "完了",
+    error: "エラー",
 };
 
 function isTauriRuntime(): boolean {
@@ -141,8 +141,10 @@ export default function FloatingWindow() {
     const [colors, setColors] = useState<[string, string]>(COLOR_PRESETS.ocean);
     const [viewMode, setViewMode] = useState<ViewMode>("waveform");
     const [menuOpen, setMenuOpen] = useState(false);
+    const [showDragHint, setShowDragHint] = useState(false);
     const [winW, setWinW] = useState(() => window.innerWidth);
     const [winH, setWinH] = useState(() => window.innerHeight);
+    const statusTimerRef = useRef(0);
 
     const audioLevelRef = useRef(0);
     const smoothLevelRef = useRef(0);
@@ -186,6 +188,15 @@ export default function FloatingWindow() {
                 if (savedMode === "circle" || savedMode === "waveform") {
                     setViewMode(savedMode);
                 }
+
+                // 初回表示のみ「ドラッグで移動できる」ヒントを出す
+                const hintSeen = await store.get<boolean>("floatingHintSeen");
+                if (!hintSeen) {
+                    setShowDragHint(true);
+                    window.setTimeout(() => setShowDragHint(false), 6000);
+                    await store.set("floatingHintSeen", true);
+                    await store.save();
+                }
             } catch {
                 // Defaults are fine when config is unavailable.
             }
@@ -225,26 +236,33 @@ export default function FloatingWindow() {
 
     useEffect(() => {
         if (!isTauriRuntime()) return;
+        const clearStatusTimer = () => window.clearTimeout(statusTimerRef.current);
+        const failWith = (message: string) => {
+            clearStatusTimer();
+            setErrorMsg(message);
+            setStatus("error");
+            statusTimerRef.current = window.setTimeout(() => {
+                setStatus("idle");
+                setErrorMsg("");
+            }, 8000);
+        };
         const unlisteners = Promise.all([
-            listen("recording-started", () => setStatus("recording")),
+            listen("recording-started", () => { clearStatusTimer(); setErrorMsg(""); setStatus("recording"); }),
             listen("recording-stopped", () => setStatus("transcribing")),
             listen("transcribing", () => setStatus("transcribing")),
             listen("formatting", () => setStatus("formatting")),
-            listen("transcription-complete", () => {
+            // 「完了」はテキストが実際にペーストされた時点で表示する
+            listen("paste-complete", () => {
+                clearStatusTimer();
                 setStatus("done");
-                window.setTimeout(() => setStatus("idle"), 1800);
+                statusTimerRef.current = window.setTimeout(() => setStatus("idle"), 1800);
             }),
-            listen<string>("transcription-error", ({ payload }) => {
-                setErrorMsg(payload);
-                setStatus("error");
-                window.setTimeout(() => {
-                    setStatus("idle");
-                    setErrorMsg("");
-                }, 8000);
-            }),
+            listen<string>("paste-error", ({ payload }) => failWith(payload)),
+            listen<string>("transcription-error", ({ payload }) => failWith(payload)),
         ]);
         return () => {
             unlisteners.then((fns) => fns.forEach((fn) => fn()));
+            clearStatusTimer();
         };
     }, []);
 
@@ -321,7 +339,7 @@ export default function FloatingWindow() {
 
     const palette = PALETTES[theme] ?? PALETTES.cyberpunk;
     const isWaveform = viewMode === "waveform";
-    const controlSize = menuOpen ? 24 : isWaveform ? 24 : 22;
+    const controlSize = menuOpen ? 28 : isWaveform ? 28 : 24;
 
     return (
         <div
@@ -360,6 +378,7 @@ export default function FloatingWindow() {
                     viewMode={viewMode}
                     onThemeChange={handleThemeChange}
                     onViewModeChange={saveViewMode}
+                    onSwitchToMain={handleClose}
                     onMouseDown={preventFocus}
                 />
             ) : (
@@ -386,6 +405,28 @@ export default function FloatingWindow() {
                             padding: 0,
                         }}
                     />
+                    {showDragHint && (
+                        <div
+                            style={{
+                                position: "absolute",
+                                left: "50%",
+                                bottom: isWaveform ? 4 : 2,
+                                transform: "translateX(-50%)",
+                                zIndex: 26,
+                                pointerEvents: "none",
+                                whiteSpace: "nowrap",
+                                fontSize: 9,
+                                fontWeight: 700,
+                                color: "rgba(255, 255, 255, 0.92)",
+                                background: "rgba(10, 12, 24, 0.72)",
+                                border: "1px solid rgba(255, 255, 255, 0.2)",
+                                borderRadius: 8,
+                                padding: "2px 8px",
+                            }}
+                        >
+                            端をドラッグで移動 / 中央クリックで録音
+                        </div>
+                    )}
                 </>
             )}
 
@@ -423,6 +464,7 @@ function FloatingMenu({
     viewMode,
     onThemeChange,
     onViewModeChange,
+    onSwitchToMain,
     onMouseDown,
 }: {
     palette: Palette;
@@ -430,6 +472,7 @@ function FloatingMenu({
     viewMode: ViewMode;
     onThemeChange: (id: ThemeId) => void;
     onViewModeChange: (mode: ViewMode) => void;
+    onSwitchToMain: (e: React.MouseEvent<HTMLButtonElement>) => void;
     onMouseDown: (e: React.MouseEvent) => void;
 }) {
     const themes: { id: ThemeId; label: string; color: string }[] = [
@@ -477,7 +520,7 @@ function FloatingMenu({
             </div>
 
             <div style={{ fontSize: 9, color: palette.dim, fontWeight: 900, marginBottom: 7 }}>カラーテーマ</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 14 }}>
                 {themes.map((item) => (
                     <button
                         key={item.id}
@@ -491,6 +534,15 @@ function FloatingMenu({
                     </button>
                 ))}
             </div>
+
+            <button
+                onClick={onSwitchToMain}
+                onMouseDown={onMouseDown}
+                tabIndex={-1}
+                style={{ ...menuButtonStyle(false, palette), width: "100%" }}
+            >
+                ↗ メイン画面へ戻る
+            </button>
         </div>
     );
 }
@@ -631,7 +683,7 @@ function drawWaveform(
 
     ctx.save();
     ctx.fillStyle = palette.dim;
-    ctx.font = "700 8px Inter, Segoe UI, sans-serif";
+    ctx.font = "700 9px Inter, Segoe UI, sans-serif";
     ctx.textAlign = "left";
     ctx.fillText("VOXTRO", 18, 17);
     ctx.textAlign = "right";
@@ -709,7 +761,7 @@ function drawOrb(
 
     ctx.save();
     ctx.fillStyle = danger ? palette.danger : palette.text;
-    ctx.font = "800 13px Inter, Segoe UI, sans-serif";
+    ctx.font = "800 13px Inter, 'Hiragino Sans', 'Yu Gothic UI', Meiryo, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(STATUS_LABEL[status], cx, cy + 1);
@@ -815,7 +867,7 @@ function drawStatusPill(ctx: CanvasRenderingContext2D, x: number, y: number, pal
     ctx.shadowBlur = 0;
     ctx.lineWidth = 2;
     ctx.strokeStyle = "rgba(0, 0, 0, 0.42)";
-    ctx.font = "900 10px Arial, Segoe UI, sans-serif";
+    ctx.font = "900 10px 'Hiragino Sans', 'Yu Gothic UI', Meiryo, Arial, sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     ctx.strokeText(STATUS_LABEL[status], x - 10, y + 0.5);
