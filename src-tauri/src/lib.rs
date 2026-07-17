@@ -230,7 +230,8 @@ pub fn run() {
             }
 
             // システムトレイ
-            TrayIconBuilder::new()
+            // 固定IDを付けて登録し、終了時に明示的に破棄できるようにする
+            TrayIconBuilder::with_id("voxtro-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Voxtro — 日本語音声入力")
                 .on_tray_icon_event(|tray, event| {
@@ -252,6 +253,11 @@ pub fn run() {
             let win = app.get_webview_window("main").unwrap();
             win.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    // Windows はプロセス終了だけではトレイアイコンが幽霊として
+                    // 残ることがあるため、明示的に非表示化してから終了する
+                    if let Some(tray) = app_handle_close.tray_by_id("voxtro-tray") {
+                        let _ = tray.set_visible(false);
+                    }
                     app_handle_close.exit(0);
                 }
             });
